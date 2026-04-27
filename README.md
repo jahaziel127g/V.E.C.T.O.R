@@ -1,7 +1,11 @@
 # V.E.C.T.O.R - AI Orchestration Engine
 
 <p align="center">
-  <strong>Project V.E.C.T.O.R</strong> | Developed by <strong>Nexus Labs</strong>
+  <strong>Project V.E.C.T.O.R</strong> | A PBL (Project-Based Learning) Project
+</p>
+
+<p align="center">
+  ⚠️ <strong>Disclaimer:</strong> This is a learning project for educational purposes. <strong>Nexus Labs</strong> is not a real company.
 </p>
 
 <p align="center">
@@ -153,6 +157,16 @@ mvn clean package
 
 ---
 
+## About
+
+**Project V.E.C.T.O.R** is a **PBL (Project-Based Learning)** assignment.
+
+- **Nexus Labs** is NOT a real company - this is a fictional organization for the project
+- Purpose: Learn and understand AI orchestration systems, Spring Boot, and offline AI deployment
+- This is an educational project, not production-ready software
+
+---
+
 ## License
 
 MIT License - Nexus Labs
@@ -160,5 +174,5 @@ MIT License - Nexus Labs
 ---
 
 <p align="center">
-  <strong>Project V.E.C.T.O.R</strong> - Built with ❤️ by Nexus Labs
+  <strong>Project V.E.C.T.O.R</strong> - PBL Learning Project
 </p>

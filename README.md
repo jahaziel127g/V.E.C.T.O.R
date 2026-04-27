@@ -9,12 +9,12 @@
 </p>
 
 <p align="center">
-  A lightweight, high-efficiency AI orchestration engine built with Spring Boot.
+  A lightweight, offline-first AI orchestration engine designed to run efficiently on low-end hardware using local inference.
 </p>
 
 ---
 
-## Overview
+## Overview 📖
 
 V.E.C.T.O.R is a backend system that acts as the central brain for AI-powered applications. It manages user requests, AI model routing, offline knowledge retrieval, memory optimization, and response generation.
 
@@ -28,11 +28,39 @@ V.E.C.T.O.R is a backend system that acts as the central brain for AI-powered ap
 
 ---
 
-## Architecture
+## Why V.E.C.T.O.R? 🤔
+
+Most AI systems rely on cloud APIs and high-end hardware.  
+V.E.C.T.O.R is designed to run fully offline on low-end machines, making AI more accessible in constrained environments such as school labs or older laptops.
+
+## Low-End Optimization 💻
+
+V.E.C.T.O.R is designed for constrained hardware:
+
+- Uses small 1B–2B parameter models
+- Limits RAM usage via configurable thresholds
+- Applies rate limiting to prevent overload
+- Uses caching to reduce repeated computation
+- Supports offline knowledge retrieval
+
+This makes it suitable for older laptops and school environments.
+
+## Architecture 🔨
 
 ```
 User Input → API Layer → Processing Pipeline → AI Orchestration → Response
 ```
+### Request Flow
+
+1. User sends a question to `/api/ask`
+2. Input is sanitized and rate-limited
+3. Question is classified as SIMPLE or COMPLEX
+4. Cached answers or Wikipedia context are retrieved
+5. Context is optimized for token limits
+6. Prompt is constructed
+7. Model Router selects the appropriate model
+8. Ollama generates a response
+9. Response is processed and returned
 
 ### Pipeline Components
 
@@ -54,7 +82,7 @@ User Input → API Layer → Processing Pipeline → AI Orchestration → Respon
 
 ---
 
-## Quick Start
+## Quick Start 🔧
 
 ### Prerequisites
 
@@ -75,6 +103,19 @@ java -jar vector-1.0.0.jar
 ```
 
 The backend will auto-install Ollama and models on first run if not present.
+
+## Automatic Setup 📦
+
+On first run, V.E.C.T.O.R will:
+
+- Detect if Ollama is installed
+- Install it automatically if missing
+- Start the Ollama server
+- Download required AI models
+
+This provides a zero-setup experience, automatically preparing the local AI environment without requiring manual configuration.
+
+> Note: Due to hardware constraints, response quality may be lower compared to large cloud-based models.
 
 ### API Usage
 
@@ -105,7 +146,7 @@ curl http://localhost:8080/api/models
 
 ---
 
-## Configuration
+## Configuration ⚙️
 
 Edit `src/main/resources/application.properties`:
 
@@ -132,7 +173,7 @@ vector.model.max-ram-percent=85
 
 ---
 
-## Model Recommendations
+## Model Recommendations 🧠
 
 | Query Type | Model | Size | Use Case |
 |------------|-------|------|----------|
@@ -156,7 +197,7 @@ mvn clean package
 
 ---
 
-## About
+## About ℹ️
 
 **Project V.E.C.T.O.R** is a **PBL (Project-Based Learning)** assignment.
 

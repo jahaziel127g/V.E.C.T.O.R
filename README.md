@@ -204,6 +204,7 @@ mvn clean package
 - **Nexus Labs** is NOT a real company - this is a fictional organization for the project
 - Purpose: Learn and understand AI orchestration systems, Spring Boot, and offline AI deployment
 - This is an educational project, not production-ready software
+- Future improvements may include support for additional models, distributed inference, and enhanced knowledge retrieval.
 
 ---
 

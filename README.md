@@ -64,8 +64,8 @@ User Input → API Layer → Processing Pipeline → AI Orchestration → Respon
 
 ```bash
 # Clone the repository
-git clone https://github.com/jahaziel127g/vector.git
-cd vector
+git clone https://github.com/jahaziel127g/V.E.C.T.O.R.git
+cd V.E.C.T.O.R
 
 # Download the JAR from Releases (or build yourself)
 # See: https://github.com/jahaziel127g/vector/releases

@@ -59,20 +59,19 @@ User Input → API Layer → Processing Pipeline → AI Orchestration → Respon
 ### Prerequisites
 
 - Java 17+
-- Ollama
 
-### Installation
+> **Note:** Ollama and AI models will be auto-installed on first run!
 
 ```bash
 # Clone the repository
 git clone https://github.com/jahaziel127g/vector.git
 cd vector
 
-# Build
-mvn clean package
+# Download the JAR from Releases (or build yourself)
+# See: https://github.com/jahaziel127g/vector/releases
 
 # Run
-java -jar target/vector-1.0.0.jar
+java -jar vector-1.0.0.jar
 ```
 
 The backend will auto-install Ollama and models on first run if not present.

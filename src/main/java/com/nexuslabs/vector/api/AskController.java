@@ -19,6 +19,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("/api")
@@ -101,9 +102,9 @@ public class AskController {
 
         String wikiContext = null;
         if (config.getWikipedia().isEnabled()) {
-            wikiContext = wikipediaService.getContextForQuery(sanitizedQuestion);
-            if (wikiContext != null) {
-                wikiContext = contextOptimizer.optimize(wikiContext);
+            Optional<String> wikiOpt = wikipediaService.getContextForQuery(sanitizedQuestion);
+            if (wikiOpt.isPresent()) {
+                wikiContext = contextOptimizer.optimize(wikiOpt.get());
             }
         }
 

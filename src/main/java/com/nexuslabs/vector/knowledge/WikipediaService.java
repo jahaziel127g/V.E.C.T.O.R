@@ -2,19 +2,15 @@ package com.nexuslabs.vector.knowledge;
 
 import com.nexuslabs.vector.config.AppConfig;
 import com.nexuslabs.vector.memory.WikiCache;
+import org.jsoup.Jsoup;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.io.BufferedReader;
 import java.io.File;
-import java.io.FileReader;
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.concurrent.TimeUnit;
+import java.io.InputStreamReader;
+import java.util.Optional;
 
 @Component
 public class WikipediaService {
@@ -29,103 +25,106 @@ public class WikipediaService {
         this.config = config;
     }
 
-    public String getContextForQuery(String query) {
+    public Optional<String> getContextForQuery(String query) {
         if (!config.getWikipedia().isEnabled()) {
-            return null;
+            return Optional.empty();
         }
 
         String cacheKey = "wiki:" + query.toLowerCase().trim();
         String cached = wikiCache.get(cacheKey);
         if (cached != null) {
-            log.debug("Wiki cache hit for: {}", query);
-            return cached;
+            log.debug("Wiki cache hit: {}", query);
+            return Optional.of(cached);
         }
 
+        File zimFile = new File(config.getKiwix().getZimPath());
+        if (!zimFile.exists()) {
+            log.warn("ZIM file not found: {}", zimFile.getPath());
+            return Optional.empty();
+        }
+
+        Optional<String> result = searchZim(query, zimFile.getPath());
+        result.ifPresent(r -> wikiCache.put(cacheKey, r));
+        return result;
+    }
+
+    private Optional<String> searchZim(String query, String zimPath) {
+        log.info("Searching ZIM for: {}", query);
+
         try {
-            String zimPath = config.getKiwix().getZimPath();
-            File zimFile = new File(zimPath);
+            ProcessBuilder pb = new ProcessBuilder(
+                "zimsearch", zimPath, query
+            );
+            pb.redirectErrorStream(true);
+            Process p = pb.start();
 
-            if (!zimFile.exists()) {
-                log.warn("ZIM file not found at: {}", zimPath);
-                return getFallbackSearch(query);
+            StringBuilder output = new StringBuilder();
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
+                String line;
+                int lineCount = 0;
+                while ((line = reader.readLine()) != null && lineCount < 5) {
+                    output.append(line).append("\n");
+                    lineCount++;
+                }
             }
 
-            String result = searchZimFile(query, zimPath);
-            if (result != null && !result.isBlank()) {
-                wikiCache.put(cacheKey, result);
-                return result;
+            if (!p.waitFor(10, java.util.concurrent.TimeUnit.SECONDS)) {
+                p.destroy();
+                return Optional.empty();
             }
 
-            return getFallbackSearch(query);
+            String result = extractArticleContent(zimPath, query);
+            if (result != null && result.length() > 50) {
+                log.info("Found ZIM article for: {}", query);
+                return Optional.of(result);
+            }
 
         } catch (Exception e) {
-            log.error("Error accessing Wikipedia: {}", e.getMessage());
-            return getFallbackSearch(query);
+            log.warn("ZIM search error: {}", e.getMessage());
         }
+
+        return Optional.empty();
     }
 
-    private String searchZimFile(String query, String zimPath) {
-        return null;
-    }
-
-    private String getFallbackSearch(String query) {
+    private String extractArticleContent(String zimPath, String query) {
         try {
-            String dataDir = "/var/lib/kiwix";
-            File dataDirFile = new File(dataDir);
-            
-            if (!dataDirFile.exists()) {
-                return null;
-            }
+            ProcessBuilder pb = new ProcessBuilder(
+                "zimdump", zimPath, "-q", query.replace(" ", "_")
+            );
+            pb.redirectErrorStream(true);
+            Process p = pb.start();
 
-            File[] textFiles = dataDirFile.listFiles((dir, name) -> 
-                name.endsWith(".txt") || name.endsWith(".html"));
-
-            if (textFiles == null || textFiles.length == 0) {
-                return null;
-            }
-
-            String[] queryTerms = query.toLowerCase().split("\\s+");
-            List<String> matches = new ArrayList<>();
-
-            for (File file : textFiles) {
-                try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
-                    String line;
-                    while ((line = reader.readLine()) != null) {
-                        String lowerLine = line.toLowerCase();
-                        boolean hasMatch = true;
-                        for (String term : queryTerms) {
-                            if (!lowerLine.contains(term)) {
-                                hasMatch = false;
-                                break;
-                            }
-                        }
-                        if (hasMatch && line.length() > 50) {
-                            matches.add(line.trim());
-                            if (matches.size() >= 3) {
-                                break;
-                            }
-                        }
+            StringBuilder content = new StringBuilder();
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    String cleaned = Jsoup.parse(line).text();
+                    if (cleaned.length() > 20) {
+                        content.append(cleaned).append(" ");
                     }
-                } catch (IOException e) {
-                    log.debug("Error reading file {}: {}", file.getName(), e.getMessage());
-                }
-                if (!matches.isEmpty()) {
-                    break;
                 }
             }
 
-            if (!matches.isEmpty()) {
-                return String.join(" ", matches);
+            p.waitFor(10, java.util.concurrent.TimeUnit.SECONDS);
+
+            String result = content.toString().trim();
+            int max = config.getWikipedia().getMaxChars();
+            if (result.length() > max) {
+                result = result.substring(0, max);
+                int lastPeriod = result.lastIndexOf('.');
+                if (lastPeriod > max / 2) {
+                    result = result.substring(0, lastPeriod + 1);
+                }
             }
+            return result;
 
         } catch (Exception e) {
-            log.debug("Fallback search failed: {}", e.getMessage());
+            log.debug("ZIM dump error: {}", e.getMessage());
+            return null;
         }
-
-        return null;
     }
 
-    public boolean isZimFileAvailable() {
+    public boolean hasZimFile() {
         return new File(config.getKiwix().getZimPath()).exists();
     }
 }

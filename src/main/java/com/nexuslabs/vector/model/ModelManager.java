@@ -43,17 +43,41 @@ public class ModelManager {
 
         if (checkRamThreshold()) {
             log.warn("RAM threshold exceeded, forcing fallback to lightweight model");
-            currentModel.set(simpleModel);
+            switchToModel(simpleModel);
             return;
         }
 
-        log.info("Switching model from {} to {}", current, modelName);
+        switchToModel(modelName);
+    }
+
+    private void switchToModel(String modelName) {
+        String oldModel = currentModel.get();
+        
+        if (oldModel != null && !oldModel.equals(modelName)) {
+            unloadModel(oldModel);
+        }
+        
+        log.info("Switching model from {} to {}", oldModel, modelName);
         currentModel.set(modelName);
+    }
+
+    private void unloadModel(String modelName) {
+        log.info("Unloading model: {}", modelName);
+        try {
+            ProcessBuilder pb = new ProcessBuilder("ollama", "unload", modelName.split(":")[0].split("/")[1]);
+            pb.redirectErrorStream(true);
+            Process p = pb.start();
+            p.waitFor(5, java.util.concurrent.TimeUnit.SECONDS);
+            log.info("Model unloaded: {}", modelName);
+        } catch (Exception e) {
+            log.debug("Could not unload model {}: {}", modelName, e.getMessage());
+        }
     }
 
     @Scheduled(fixedRate = 60000)
     public void checkIdleTimeout() {
-        if (currentModel.get() == null) {
+        String model = currentModel.get();
+        if (model == null) {
             return;
         }
 
@@ -62,6 +86,7 @@ public class ModelManager {
 
         if (idleTime > idleTimeoutMs) {
             log.info("Model idle timeout reached, unloading model");
+            unloadModel(model);
             currentModel.set(null);
         }
     }
@@ -100,6 +125,6 @@ public class ModelManager {
 
     public void switchToFallback() {
         log.warn("Switching to fallback model due to failure");
-        currentModel.set(simpleModel);
+        switchToModel(simpleModel);
     }
 }

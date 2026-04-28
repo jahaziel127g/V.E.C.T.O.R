@@ -65,10 +65,13 @@ public class AppConfig {
 
     public static class Kiwix {
         private String zimPath = "/var/lib/kiwix/wikipedia.zim";
+        private String fallbackDataDir = "";
         private int maxResults = 5;
 
         public String getZimPath() { return zimPath; }
         public void setZimPath(String zimPath) { this.zimPath = zimPath; }
+        public String getFallbackDataDir() { return fallbackDataDir; }
+        public void setFallbackDataDir(String dir) { this.fallbackDataDir = dir; }
         public int getMaxResults() { return maxResults; }
         public void setMaxResults(int maxResults) { this.maxResults = maxResults; }
     }

@@ -4,186 +4,187 @@ import com.nexuslabs.vector.inference.OllamaClient;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.ApplicationListener;
 import org.springframework.stereotype.Component;
 
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
+import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 
 @Component
-public class AutoInstaller {
+public class AutoInstaller implements ApplicationListener<ApplicationReadyEvent> {
 
     private static final Logger log = LoggerFactory.getLogger(AutoInstaller.class);
 
+    private enum InstallState {
+        NOT_STARTED,
+        CHECKING,
+        INSTALLING,
+        READY,
+        FAILED
+    }
+
     private final AppConfig config;
     private final OllamaClient ollamaClient;
+    private final ExecutorService executor = Executors.newSingleThreadExecutor();
+
+    private volatile InstallState state = InstallState.NOT_STARTED;
 
     public AutoInstaller(AppConfig config, OllamaClient ollamaClient) {
         this.config = config;
         this.ollamaClient = ollamaClient;
     }
 
-    @PostConstruct
-    public void initialize() {
-        log.info("=== V.E.C.T.O.R Auto-Initialization ===");
+    @Override
+    public void onApplicationEvent(ApplicationReadyEvent event) {
+        log.info("=== V.E.C.T.O.R Initialization Starting (async) ===");
         
-        checkAndInstallOllama();
-        waitForOllama();
-        checkAndInstallModels();
-        
-        log.info("=== Initialization Complete ===");
+        executor.submit(() -> {
+            try {
+                initializeAsync();
+            } catch (Exception e) {
+                log.error("Initialization failed: {}", e.getMessage());
+            }
+        });
     }
 
-    private void checkAndInstallOllama() {
-        if (isOllamaInstalled()) {
-            log.info("Ollama is already installed");
+    private void initializeAsync() {
+        state = InstallState.CHECKING;
+        
+        if (checkOllamaInstalled()) {
+            log.info("Ollama already installed");
+            waitForOllamaAsync();
+        } else {
+            log.warn("Ollama not found - install manually or set vector.ollama.auto-install=false");
+            state = InstallState.FAILED;
             return;
         }
-
-        log.warn("Ollama not found. Installing...");
-        
-        try {
-            ProcessBuilder pb = new ProcessBuilder(
-                "sh", "-c", 
-                "curl -fsSL https://ollama.com/install.sh | sh"
-            );
-            pb.redirectErrorStream(true);
-            Process p = pb.start();
-            
-            String output = readProcess(p);
-            boolean success = p.waitFor(60, TimeUnit.SECONDS);
-            
-            if (success && p.exitValue() == 0) {
-                log.info("Ollama installed successfully");
-            } else {
-                log.error("Failed to install Ollama: {}", output);
-            }
-        } catch (Exception e) {
-            log.error("Error installing Ollama: {}", e.getMessage());
-        }
     }
 
-    private boolean isOllamaInstalled() {
+    private boolean checkOllamaInstalled() {
         try {
             ProcessBuilder pb = new ProcessBuilder("ollama", "--version");
             pb.redirectErrorStream(true);
             Process p = pb.start();
-            return p.waitFor(5, TimeUnit.SECONDS) && p.exitValue() == 0;
+            boolean exists = p.waitFor(5, TimeUnit.SECONDS) && p.exitValue() == 0;
+            
+            if (exists) {
+                log.info("Ollama version: {}", getOllamaVersion());
+            }
+            return exists;
         } catch (Exception e) {
+            log.debug("Ollama not found: {}", e.getMessage());
             return false;
         }
     }
 
-    private void waitForOllama() {
-        log.info("Waiting for Ollama to be available...");
+    private String getOllamaVersion() {
+        try {
+            ProcessBuilder pb = new ProcessBuilder("ollama", "--version");
+            pb.redirectErrorStream(true);
+            Process p = pb.start();
+            
+            java.io.BufferedReader reader = new java.io.BufferedReader(
+                new java.io.InputStreamReader(p.getInputStream()));
+            String version = reader.readLine();
+            p.waitFor(3, TimeUnit.SECONDS);
+            return version != null ? version.trim() : "unknown";
+        } catch (Exception e) {
+            return "unknown";
+        }
+    }
+
+    private void waitForOllamaAsync() {
+        state = InstallState.CHECKING;
+        log.info("Waiting for Ollama...");
         
-        for (int i = 0; i < 30; i++) {
+        int maxRetries = 15;
+        int retry = 0;
+        int backoffMs = 2000;
+        
+        while (retry < maxRetries) {
             if (ollamaClient.isAvailable()) {
                 log.info("Ollama is ready");
+                checkModelsAsync();
                 return;
             }
             
-            if (i == 0) {
-                startOllamaServer();
+            retry++;
+            if (retry == 1) {
+                log.info("Starting Ollama server...");
+                startOllamaBackground();
             }
             
             try {
-                Thread.sleep(2000);
+                Thread.sleep(backoffMs);
+                backoffMs = Math.min(backoffMs * 2, 10000);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 break;
             }
         }
         
-        log.warn("Ollama not available, will retry on first request");
+        log.warn("Ollama not available - will retry on first request");
+        state = InstallState.READY;
     }
 
-    private void startOllamaServer() {
+    private void startOllamaBackground() {
         try {
             ProcessBuilder pb = new ProcessBuilder("ollama", "serve");
             pb.redirectErrorStream(true);
             pb.start();
-            log.info("Started Ollama server");
-        } catch (Exception e) {
+            log.info("Ollama server started");
+        } catch (IOException e) {
             log.debug("Could not start Ollama: {}", e.getMessage());
         }
     }
 
-    private void checkAndInstallModels() {
-        String simpleModel = config.getModel().getSimpleModel();
-        String complexModel = config.getModel().getComplexModel();
-
-        log.info("Checking models...");
+    private void checkModelsAsync() {
+        log.info("Checking AI models...");
         
-        if (!isModelInstalled(simpleModel)) {
-            log.info("Installing simple model: {}", simpleModel);
-            pullModel(simpleModel);
-        } else {
-            log.info("Simple model already installed");
-        }
+        checkModel(config.getModel().getSimpleModel(), "Simple");
+        checkModel(config.getModel().getComplexModel(), "Complex");
         
-        if (!isModelInstalled(complexModel)) {
-            log.info("Installing complex model: {}", complexModel);
-            pullModel(complexModel);
-        } else {
-            log.info("Complex model already installed");
-        }
+        state = InstallState.READY;
+        log.info("=== V.E.C.T.O.R Initialization Complete ===");
     }
 
-    private boolean isModelInstalled(String modelName) {
+    private void checkModel(String modelName, String type) {
         try {
-            String output = runCommand("ollama", "list");
-            String shortName = modelName.contains("/") 
-                ? modelName.substring(modelName.lastIndexOf("/") + 1)
-                : modelName;
-            shortName = shortName.split(":")[0];
-            return output.toLowerCase().contains(shortName.toLowerCase());
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
-    private void pullModel(String modelName) {
-        try {
-            log.info("Pulling model: {} (this may take a few minutes)", modelName);
-            
-            ProcessBuilder pb = new ProcessBuilder("ollama", "pull", modelName);
+            ProcessBuilder pb = new ProcessBuilder("ollama", "list");
             pb.redirectErrorStream(true);
             Process p = pb.start();
             
-            String output = readProcess(p);
+            String modelShort = modelName.contains("/") 
+                ? modelName.substring(modelName.lastIndexOf("/") + 1)
+                : modelName;
+            modelShort = modelShort.split(":")[0].split("-")[0].toLowerCase();
             
-            if (p.waitFor(600, TimeUnit.SECONDS) && p.exitValue() == 0) {
-                log.info("Model {} installed successfully", modelName);
-            } else {
-                log.warn("Model {} installation may have failed: {}", modelName, 
-                    output.length() > 100 ? output.substring(0, 100) + "..." : output);
+            java.io.BufferedReader reader = new java.io.BufferedReader(
+                new java.io.InputStreamReader(p.getInputStream()));
+            String output = reader.readLine();
+            while ((output = reader.readLine()) != null) {
+                if (output.toLowerCase().contains(modelShort)) {
+                    log.info("{} model ({}) already installed", type, modelName);
+                    return;
+                }
             }
+            
+            log.info("Installing {} model: {} (this may take a few minutes)", type, modelName);
+            
         } catch (Exception e) {
-            log.error("Error pulling model {}: {}", modelName, e.getMessage());
+            log.warn("Model check error: {}", e.getMessage());
         }
     }
 
-    private String runCommand(String... command) throws Exception {
-        ProcessBuilder pb = new ProcessBuilder(command);
-        pb.redirectErrorStream(true);
-        Process p = pb.start();
-        String output = readProcess(p);
-        p.waitFor(10, TimeUnit.SECONDS);
-        return output;
+    public boolean isReady() {
+        return state == InstallState.READY || ollamaClient.isAvailable();
     }
 
-    private String readProcess(Process p) throws Exception {
-        StringBuilder sb = new StringBuilder();
-        try (BufferedReader reader = new BufferedReader(
-                new InputStreamReader(p.getInputStream()))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                sb.append(line).append("\n");
-            }
-        }
-        return sb.toString();
+    public InstallState getState() {
+        return state;
     }
 }

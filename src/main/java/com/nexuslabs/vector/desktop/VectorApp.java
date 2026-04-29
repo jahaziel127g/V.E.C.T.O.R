@@ -1,9 +1,6 @@
 package com.nexuslabs.vector.desktop;
 
 import javax.swing.*;
-import javax.swing.text.DefaultStyledDocument;
-import javax.swing.text.StyleConstants;
-import javax.swing.text.html.*;
 import java.awt.*;
 import java.awt.event.*;
 import java.io.*;
@@ -12,87 +9,74 @@ import java.util.concurrent.*;
 
 public class VectorApp extends JFrame {
 
+    private JTextArea chat;
     private JTextField input;
-    private JTextPane chat;
     private JButton send;
-    private JButton clear;
-    private DefaultStyledDocument doc;
-    private boolean loading = false;
+    private volatile boolean loading = false;
 
     public VectorApp() {
         super("V.E.C.T.O.R - AI Assistant");
-        
         setDefaultCloseOperation(EXIT_ON_CLOSE);
         setSize(600, 700);
         setLocationRelativeTo(null);
-        setMinimumSize(new Dimension(400, 500));
         
-        initComponents();
-        addComponents();
-        
+        initUI();
         setVisible(true);
-        appendMessage("bot", "Hello! I'm V.E.C.T.O.R. How can I help?");
+        
+        appendChat("bot", "Hello! I'm V.E.C.T.O.R. How can I help?");
     }
 
-    private void initComponents() {
-        doc = new DefaultStyledDocument();
+    private void initUI() {
+        setLayout(new BorderLayout());
+        getContentPane().setBackground(new Color(15, 15, 25));
         
-        chat = new JTextPane(doc);
+        chat = new JTextArea();
         chat.setEditable(false);
-        chat.setFont(new Font("Segoe UI", Font.PLAIN, 14));
-        chat.setBackground(new Color(10, 10, 15));
+        chat.setLineWrap(true);
+        chat.setWrapStyleWord(true);
+        chat.setFont(new Font("Segoe UI", Font.PLAIN, 15));
+        chat.setBackground(new Color(15, 15, 25));
         chat.setForeground(new Color(220, 220, 220));
+        chat.setCaretColor(new Color(0, 212, 255));
+        chat.setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15));
+        
+        JScrollPane scroll = new JScrollPane(chat);
+        scroll.setBackground(new Color(15, 15, 25));
+        scroll.setBorder(null);
+        
+        JPanel header = new JPanel(new BorderLayout());
+        header.setBackground(new Color(30, 30, 50));
+        header.setBorder(BorderFactory.createEmptyBorder(12, 15, 12, 15));
+        
+        JLabel title = new JLabel("V.E.C.T.O.R");
+        title.setFont(new Font("Segoe UI", Font.BOLD, 18));
+        title.setForeground(new Color(0, 212, 255));
+        
+        JLabel status = new JLabel("●");
+        status.setFont(new Font("Segoe UI", Font.PLAIN, 14));
+        status.setForeground(new Color(0, 255, 100));
+        
+        header.add(title, BorderLayout.WEST);
+        header.add(status, BorderLayout.EAST);
         
         input = new JTextField();
         input.setFont(new Font("Segoe UI", Font.PLAIN, 14));
-        input.setBackground(new Color(26, 26, 46));
+        input.setBackground(new Color(30, 30, 50));
         input.setForeground(Color.WHITE);
         input.setCaretColor(Color.WHITE);
-        input.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        input.setBorder(BorderFactory.createEmptyBorder(12, 15, 12, 15));
+        input.addActionListener(e -> sendMessage());
         
         send = new JButton("Send");
         send.setFont(new Font("Segoe UI", Font.BOLD, 14));
         send.setBackground(new Color(37, 99, 235));
         send.setForeground(Color.WHITE);
-        send.setBorder(BorderFactory.createEmptyBorder(10, 20, 10, 20));
         send.setFocusPainted(false);
+        send.setBorder(BorderFactory.createEmptyBorder(12, 20, 12, 20));
         send.addActionListener(e -> sendMessage());
         
-        clear = new JButton("Clear");
-        clear.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-        clear.setBackground(new Color(60, 60, 80));
-        clear.setForeground(Color.LIGHT_GRAY);
-        clear.setBorder(BorderFactory.createEmptyBorder(8, 15, 8, 15));
-        clear.setFocusPainted(false);
-        clear.addActionListener(e -> clearChat());
-        
-        input.addActionListener(e -> sendMessage());
-    }
-
-    private void addComponents() {
-        setLayout(new BorderLayout(0, 0));
-        
-        JPanel header = new JPanel(new BorderLayout());
-        header.setBackground(new Color(26, 26, 46));
-        header.setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15));
-        
-        JLabel title = new JLabel("V.E.C.T.O.R");
-        title.setFont(new Font("Segoe UI", Font.BOLD, 20));
-        title.setForeground(new Color(0, 212, 255));
-        
-        JLabel status = new JLabel("● Online");
-        status.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-        status.setForeground(new Color(0, 255, 136));
-        
-        header.add(title, BorderLayout.WEST);
-        header.add(status, BorderLayout.EAST);
-        
-        JScrollPane scroll = new JScrollPane(chat);
-        scroll.setBorder(null);
-        scroll.setBackground(new Color(10, 10, 15));
-        
         JPanel bottom = new JPanel(new BorderLayout(5, 0));
-        bottom.setBackground(new Color(26, 26, 46));
+        bottom.setBackground(new Color(30, 30, 50));
         bottom.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
         bottom.add(input, BorderLayout.CENTER);
         bottom.add(send, BorderLayout.EAST);
@@ -106,7 +90,7 @@ public class VectorApp extends JFrame {
         String question = input.getText().trim();
         if (question.isEmpty() || loading) return;
         
-        appendMessage("user", question);
+        appendChat("user", question);
         input.setText("");
         setLoading(true);
         
@@ -115,12 +99,12 @@ public class VectorApp extends JFrame {
             try {
                 String response = askAPI(question);
                 SwingUtilities.invokeLater(() -> {
-                    appendMessage("bot", response);
+                    appendChat("bot", response);
                     setLoading(false);
                 });
             } catch (Exception e) {
                 SwingUtilities.invokeLater(() -> {
-                    appendMessage("error", "Error: " + e.getMessage());
+                    appendChat("error", "Error: " + e.getMessage());
                     setLoading(false);
                 });
             }
@@ -135,8 +119,13 @@ public class VectorApp extends JFrame {
         conn.setRequestProperty("Content-Type", "application/json");
         conn.setDoOutput(true);
         
-        String json = "{\"question\":\"" + question.replace("\"", "\\\"") + "\"}";
+        String json = "{\"question\":\"" + escapeJson(question) + "\"}";
         conn.getOutputStream().write(json.getBytes());
+        
+        int code = conn.getResponseCode();
+        if (code != 200) {
+            throw new Exception("Server returned " + code);
+        }
         
         BufferedReader reader = new BufferedReader(
             new InputStreamReader(conn.getInputStream()));
@@ -147,55 +136,48 @@ public class VectorApp extends JFrame {
         }
         reader.close();
         
-        String jsonResponse = response.toString();
-        
-        String answer = extractJson(jsonResponse, "answer");
-        if (answer == null) {
-            answer = extractJson(jsonResponse, "error");
-            if (answer == null) answer = "No response";
-        }
-        
-        return answer;
+        String ans = parseJson(response.toString(), "answer");
+        return ans != null ? ans : "No response";
     }
 
-    private String extractJson(String json, String key) {
-        int keyStart = json.indexOf("\"" + key + "\"");
-        if (keyStart == -1) return null;
-        keyStart = json.indexOf(":", keyStart) + 1;
-        while (keyStart < json.length() && json.charAt(keyStart) <= ' ') keyStart++;
+    private String escapeJson(String s) {
+        return s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n");
+    }
+
+    private String parseJson(String json, String key) {
+        int idx = json.indexOf("\"" + key + "\"");
+        if (idx < 0) return null;
+        idx = json.indexOf(":", idx) + 1;
+        while (idx < json.length() && json.charAt(idx) <= ' ') idx++;
         
-        if (keyStart >= json.length()) return null;
+        if (idx >= json.length()) return null;
         
-        char endChar = json.charAt(keyStart);
-        if (endChar != '"') {
-            int end = keyStart;
+        if (json.charAt(idx) != '"') {
+            int end = idx;
             while (end < json.length() && json.charAt(end) != ',' && json.charAt(end) != '}') end++;
-            return json.substring(keyStart, end).replaceAll("[\\\\]\"", "\"").trim();
+            return json.substring(idx, end).replaceAll("[\\\\]\"", "\"").trim();
         }
         
-        int end = keyStart + 1;
+        int end = ++idx;
         while (end < json.length()) {
             if (json.charAt(end) == '"' && json.charAt(end - 1) != '\\') break;
             end++;
         }
         
-        return json.substring(keyStart + 1, end).replaceAll("\\\\\"", "\"");
+        return json.substring(idx, end).replace("\\\\", "\\").replace("\\\"", "\"");
     }
 
-    private void appendMessage(String type, String text) {
-        try {
-            StyleConstants.setForeground(doc.getStyle("default"), 
-                type.equals("user") ? new Color(37, 99, 235) :
-                type.equals("error") ? new Color(255, 80, 80) :
-                new Color(220, 220, 220));
-            
-            doc.insertString(doc.getLength(), 
-                (type.equals("bot") ? "V.E.C.T.O.R: " : 
-                type.equals("error") ? "Error: " : "You: ") + text + "\n\n", 
-                doc.getStyle("default"));
-            
-            chat.setCaretPosition(doc.getLength());
-        } catch (Exception e) {}
+    private void appendChat(String type, String text) {
+        Color color = type.equals("user") ? new Color(100, 150, 255) :
+                    type.equals("error") ? new Color(255, 100, 100) :
+                    new Color(220, 220, 220);
+        
+        String prefix = type.equals("user") ? "\nYou: " :
+                     type.equals("error") ? "\nError: " : "\nV.E.C.T.O.R: ";
+        
+        chat.setCaretPosition(chat.getDocument().getLength());
+        chat.setForeground(color);
+        chat.append(prefix + text + "\n");
     }
 
     private void setLoading(boolean loading) {
@@ -205,14 +187,12 @@ public class VectorApp extends JFrame {
         send.setText(loading ? "..." : "Send");
     }
 
-    private void clearChat() {
-        try {
-            doc.remove(0, doc.getLength());
-            appendMessage("bot", "Chat cleared. How can I help?");
-        } catch (Exception e) {}
-    }
-
     public static void main(String[] args) {
-        SwingUtilities.invokeLater(() -> new VectorApp());
+        SwingUtilities.invokeLater(() -> {
+            try {
+                UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+            } catch (Exception e) {}
+            new VectorApp();
+        });
     }
 }

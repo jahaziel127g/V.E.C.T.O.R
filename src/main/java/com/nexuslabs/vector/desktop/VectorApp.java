@@ -6,16 +6,31 @@ import java.awt.event.*;
 import java.io.*;
 import java.net.*;
 import java.util.concurrent.*;
+import java.util.logging.*;
 
 public class VectorApp extends JFrame {
 
+    private static final Logger logger = Logger.getLogger("VectorApp");
     private JTextArea chat;
     private JTextField input;
     private JButton send;
     private volatile boolean loading = false;
 
+    static {
+        try {
+            FileHandler fh = new FileHandler("vector-app.log", true);
+            fh.setFormatter(new SimpleFormatter());
+            logger.addHandler(fh);
+            logger.setLevel(Level.ALL);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
     public VectorApp() {
         super("V.E.C.T.O.R - AI Assistant");
+        logger.info("Starting V.E.C.T.O.R Desktop App");
+        
         setDefaultCloseOperation(EXIT_ON_CLOSE);
         setSize(600, 700);
         setLocationRelativeTo(null);
@@ -24,6 +39,7 @@ public class VectorApp extends JFrame {
         setVisible(true);
         
         appendChat("bot", "Hello! I'm V.E.C.T.O.R. How can I help?");
+        logger.info("App started successfully");
     }
 
     private void initUI() {
@@ -86,10 +102,11 @@ public class VectorApp extends JFrame {
         add(bottom, BorderLayout.SOUTH);
     }
 
-    private void sendMessage() {
+private void sendMessage() {
         String question = input.getText().trim();
         if (question.isEmpty() || loading) return;
         
+        logger.info("Sending question: " + question);
         appendChat("user", question);
         input.setText("");
         setLoading(true);
@@ -98,11 +115,13 @@ public class VectorApp extends JFrame {
         executor.submit(() -> {
             try {
                 String response = askAPI(question);
+                logger.info("Got response: " + response.substring(0, Math.min(100, response.length())) + "...");
                 SwingUtilities.invokeLater(() -> {
                     appendChat("bot", response);
                     setLoading(false);
                 });
             } catch (Exception e) {
+                logger.severe("Error: " + e.getMessage());
                 SwingUtilities.invokeLater(() -> {
                     appendChat("error", "Error: " + e.getMessage());
                     setLoading(false);
@@ -113,6 +132,7 @@ public class VectorApp extends JFrame {
     }
 
     private String askAPI(String question) throws Exception {
+        logger.info("Connecting to API...");
         URL url = new URL("http://localhost:8080/api/ask");
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
         conn.setRequestMethod("POST");
@@ -188,11 +208,22 @@ public class VectorApp extends JFrame {
     }
 
     public static void main(String[] args) {
+        logger.info("Main method started");
+        
         SwingUtilities.invokeLater(() -> {
             try {
                 UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
-            } catch (Exception e) {}
-            new VectorApp();
+                logger.info("Look and feel set");
+                new VectorApp();
+                logger.info("VectorApp created");
+            } catch (Exception e) {
+                logger.severe("Fatal error: " + e.getMessage());
+                e.printStackTrace();
+                JOptionPane.showMessageDialog(null, 
+                    "Error starting app: " + e.getMessage(),
+                    "Error", JOptionPane.ERROR_MESSAGE);
+                System.exit(1);
+            }
         });
     }
 }

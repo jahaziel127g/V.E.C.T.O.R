@@ -3,104 +3,62 @@ package com.nexuslabs.vector.desktop;
 import javax.swing.*;
 import java.awt.*;
 
-public class VectorApp extends JFrame {
+public class VectorApp {
 
-    private JTextArea chat;
-    private JTextField input;
-    private JButton send;
-    private boolean loading = false;
-
-    public VectorApp() {
-        super("V.E.C.T.O.R");
-        System.out.println("Constructor started");
+    public static void main(String[] args) {
+        System.out.println("Starting...");
         
-        // Force window to be visible and have content
-        setSize(500, 600);
-        setLocation(100, 100);
+        // Create frame manually
+        JFrame frame = new JFrame("V.E.C.T.O.R");
+        frame.setSize(500, 600);
+        frame.setLocation(100, 100);
+        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         
-        // SIMPLE - no layouts, just put components in
-        setLayout(null);
-        setBackground(Color.BLACK);
+        // Force black background at frame level
+        frame.setBackground(Color.BLACK);
+        frame.getContentPane().setBackground(Color.BLACK);
         
-        // Header label - blue text
-        JLabel header = new JLabel("V.E.C.T.O.R");
+        // Create black panel
+        JPanel main = new JPanel(null);
+        main.setBackground(Color.BLACK);
+        
+        // Header - cyan
+        JLabel header = new JLabel("V.E.C.T.O.R", JLabel.CENTER);
         header.setBounds(0, 0, 500, 40);
         header.setBackground(Color.BLUE);
         header.setForeground(Color.CYAN);
         header.setOpaque(true);
-        header.setFont(new Font("Arial", Font.BOLD, 24));
-        add(header);
+        header.setFont(new Font("Arial", Font.BOLD, 20));
+        main.add(header);
         
-        // Chat area - black background, white text
-        chat = new JTextArea();
-        chat.setBounds(0, 40, 500, 400);
+        // Chat - black background
+        JTextArea chat = new JTextArea();
+        chat.setBounds(0, 40, 500, 420);
         chat.setBackground(Color.BLACK);
         chat.setForeground(Color.WHITE);
-        chat.setFont(new Font("Arial", Font.PLAIN, 14));
         chat.setEditable(false);
-        add(chat);
+        chat.setFont(new Font("Arial", Font.PLAIN, 14));
+        chat.setText("V.E.C.T.O.R - AI Assistant\n\nAsk me anything!\n");
+        main.add(chat);
         
-        // Input field
-        input = new JTextField();
-        input.setBounds(0, 440, 400, 40);
+        // Input - dark gray
+        JTextField input = new JTextField();
+        input.setBounds(0, 460, 400, 40);
         input.setBackground(Color.DARK_GRAY);
         input.setForeground(Color.WHITE);
         input.setCaretColor(Color.WHITE);
-        add(input);
+        main.add(input);
         
-        // Send button
-        send = new JButton("SEND");
-        send.setBounds(400, 440, 100, 40);
+        // Button - blue
+        JButton send = new JButton("SEND");
+        send.setBounds(400, 460, 100, 40);
         send.setBackground(Color.BLUE);
         send.setForeground(Color.WHITE);
-        send.addActionListener(e -> sendMessage());
-        add(send);
+        main.add(send);
         
-        setDefaultCloseOperation(EXIT_ON_CLOSE);
-        setVisible(true);
+        frame.add(main);
+        frame.setVisible(true);
         
-        chat.setText("V.E.C.T.O.R\nHello! How can I help?\n\n");
-        System.out.println("UI created");
-    }
-
-    private void sendMessage() {
-        String q = input.getText();
-        if (q.isEmpty()) return;
-        
-        chat.append("You: " + q + "\n");
-        input.setText("");
-        
-        chat.append("Thinking...\n");
-        
-        new Thread(() -> {
-            try {
-                String r = callAPI(q);
-                chat.append("V.E.C.T.O.R: " + r + "\n\n");
-            } catch (Exception e) {
-                chat.append("ERROR: " + e.getMessage() + "\n");
-            }
-        }).start();
-    }
-
-    private String callAPI(String q) throws Exception {
-        java.net.URL url = new java.net.URL("http://localhost:8080/api/ask");
-        java.net.HttpURLConnection c = (java.net.HttpURLConnection) url.openConnection();
-        c.setRequestMethod("POST");
-        c.setRequestProperty("Content-Type", "application/json");
-        c.setDoOutput(true);
-        c.getOutputStream().write(("{\"question\":\"" + q + "\"}").getBytes());
-        
-        java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(c.getInputStream()));
-        StringBuilder sb = new StringBuilder();
-        String line;
-        while ((line = r.readLine()) != null) sb.append(line);
-        r.close();
-        
-        return sb.toString();
-    }
-
-    public static void main(String[] args) {
-        System.out.println("Main called");
-        new VectorApp();
+        System.out.println("Window shown");
     }
 }

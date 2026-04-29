@@ -45,33 +45,48 @@ public class VectorApp extends JFrame {
         setLocationRelativeTo(null);
         
         // Force dark mode before creating components
-        try {
-            UIManager.setLookAndFeel("javax.swing.plaf.metal.MetalLookAndFeel");
-            UIManager.put("Panel.background", bgColor);
-            UIManager.put("TextField.background", inputBgColor);
-            UIManager.put("TextField.foreground", textColor);
-            UIManager.put("TextArea.background", bgColor);
-            UIManager.put("TextArea.foreground", textColor);
-            UIManager.put("Button.background", new Color(50, 100, 200));
-            UIManager.put("Button.foreground", Color.WHITE);
+try {
+            SwingUtilities.invokeLater(() -> {
+                try {
+                    logger.info("Setting look and feel");
+                    UIManager.setLookAndFeel("javax.swing.plaf.metal.MetalLookAndFeel");
+                    UIManager.put("Panel.background", bgColor);
+                    UIManager.put("TextField.background", inputBgColor);
+                    UIManager.put("TextField.foreground", textColor);
+                    UIManager.put("TextArea.background", bgColor);
+                    UIManager.put("TextArea.foreground", textColor);
+                    UIManager.put("Button.background", new Color(50, 100, 200));
+                    UIManager.put("Button.foreground", Color.WHITE);
+                    logger.info("Look and feel set to metal");
+                } catch (Exception e) {
+                    logger.warning("Could not set look and feel: " + e.getMessage());
+                }
+                
+                logger.info("Creating VectorApp instance");
+                new VectorApp();
+                logger.info("VectorApp instance created");
+            });
         } catch (Exception e) {
-            logger.warning("Could not set look and feel: " + e.getMessage());
+            logger.severe("Fatal error: " + e.getMessage());
+            e.printStackTrace();
+            JOptionPane.showMessageDialog(null, 
+                "Error starting app: " + e.getMessage(),
+                "Error", JOptionPane.ERROR_MESSAGE);
+            System.exit(1);
         }
         
-        setBackground(bgColor);
-        getContentPane().setBackground(bgColor);
-        
-        logger.info("Creating UI components");
-        
         // Header
+        logger.info("Creating header panel");
         JPanel header = new JPanel(new BorderLayout());
         header.setBackground(new Color(30, 30, 50));
         header.setPreferredSize(new Dimension(0, 50));
         
+        logger.info("Creating title label");
         JLabel title = new JLabel("V.E.C.T.O.R");
         title.setFont(new Font("Arial", Font.BOLD, 20));
         title.setForeground(new Color(0, 200, 255));
         
+        logger.info("Creating status label");
         JLabel status = new JLabel("Online");
         status.setFont(new Font("Arial", Font.PLAIN, 12));
         status.setForeground(new Color(100, 255, 100));
@@ -79,8 +94,10 @@ public class VectorApp extends JFrame {
         header.add(title, BorderLayout.WEST);
         header.add(status, BorderLayout.EAST);
         header.setBorder(BorderFactory.createEmptyBorder(10, 15, 10, 15));
+        logger.info("Header panel created");
         
         // Chat area
+        logger.info("Creating chat area");
         chat = new JTextArea();
         chat.setEditable(false);
         chat.setLineWrap(true);
@@ -90,43 +107,54 @@ public class VectorApp extends JFrame {
         chat.setForeground(textColor);
         chat.setCaretColor(new Color(0, 200, 255));
         chat.setBorder(BorderFactory.createEmptyBorder(10, 15, 10, 15));
-        
-        // Make sure background shows
         chat.setOpaque(true);
+        logger.info("Chat area created");
+        
         JPanel chatPanel = new JPanel(new GridLayout());
         chatPanel.setBackground(bgColor);
         chatPanel.add(chat);
         
         // Input area
+        logger.info("Creating input panel");
         JPanel inputPanel = new JPanel(new BorderLayout(5, 0));
         inputPanel.setBackground(new Color(30, 30, 50));
         inputPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
         
+        logger.info("Creating input field");
         input = new JTextField();
         input.setFont(new Font("Arial", Font.PLAIN, 14));
         input.setBackground(inputBgColor);
         input.setForeground(textColor);
         input.setCaretColor(new Color(0, 200, 255));
         input.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        input.setOpaque(true);
         
+        logger.info("Creating send button");
         send = new JButton("Send");
         send.setFont(new Font("Arial", Font.BOLD, 14));
         send.setBackground(new Color(50, 100, 200));
         send.setForeground(Color.WHITE);
         send.setFocusPainted(false);
         send.setBorder(BorderFactory.createEmptyBorder(10, 20, 10, 20));
+        send.setOpaque(true);
+        logger.info("Send button created");
         
         inputPanel.add(input, BorderLayout.CENTER);
         inputPanel.add(send, BorderLayout.EAST);
+        logger.info("Input panel created");
         
         // Add components
+        logger.info("Adding components to frame");
         add(header, BorderLayout.NORTH);
         add(chatPanel, BorderLayout.CENTER);
         add(inputPanel, BorderLayout.SOUTH);
+        logger.info("Components added to frame");
         
         // Event handlers
+        logger.info("Adding event handlers");
         send.addActionListener(e -> sendMessage());
         input.addActionListener(e -> sendMessage());
+        logger.info("Event handlers added");
         
         setVisible(true);
         
@@ -138,44 +166,57 @@ public class VectorApp extends JFrame {
         String question = input.getText().trim();
         if (question.isEmpty() || loading) return;
         
-        logger.info("Sending: " + question);
+        logger.info("User question: " + question);
         appendChat("user", question);
         input.setText("");
         setLoading(true);
         
         new Thread(() -> {
             try {
+                logger.info("Calling API with question: " + question);
                 String response = askAPI(question);
-                logger.info("Got response");
+                logger.info("API call successful, response length: " + response.length());
                 SwingUtilities.invokeLater(() -> {
                     appendChat("bot", response);
                     setLoading(false);
+                    logger.info("Response shown, loading false");
                 });
             } catch (Exception e) {
-                logger.severe("Error: " + e.getMessage());
+                logger.severe("Error calling API: " + e.getMessage());
+                e.printStackTrace();
                 SwingUtilities.invokeLater(() -> {
                     appendChat("error", "Error: " + e.getMessage());
                     setLoading(false);
+                    logger.info("Error shown, loading false");
                 });
             }
         }).start();
     }
 
     private String askAPI(String question) throws Exception {
+        logger.info("Creating connection to API");
         URL url = new URL("http://localhost:8080/api/ask");
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        logger.info("Setting request method POST");
         conn.setRequestMethod("POST");
         conn.setRequestProperty("Content-Type", "application/json");
         conn.setDoOutput(true);
         
         String json = "{\"question\":\"" + escapeJson(question) + "\"}";
+        logger.info("Sending JSON: " + json.substring(0, Math.min(50, json.length())) + "...");
+        
         conn.getOutputStream().write(json.getBytes());
+        conn.getOutputStream().flush();
+        logger.info("Request sent, getting response code");
         
         int code = conn.getResponseCode();
+        logger.info("Response code: " + code);
+        
         if (code != 200) {
             throw new Exception("Server error: " + code);
         }
         
+        logger.info("Reading response");
         BufferedReader reader = new BufferedReader(
             new InputStreamReader(conn.getInputStream()));
         StringBuilder response = new StringBuilder();
@@ -184,6 +225,7 @@ public class VectorApp extends JFrame {
             response.append(line);
         }
         reader.close();
+        logger.info("Response received, parsing JSON");
         
         return parseJson(response.toString(), "answer");
     }

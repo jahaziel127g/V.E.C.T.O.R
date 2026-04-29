@@ -1,14 +1,14 @@
 package com.nexuslabs.vector.config;
 
 import com.nexuslabs.vector.inference.OllamaClient;
-import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.ApplicationListener;
 import org.springframework.stereotype.Component;
 
-import java.io.IOException;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
 import java.util.concurrent.*;
 
 @Component
@@ -17,11 +17,7 @@ public class AutoInstaller implements ApplicationListener<ApplicationReadyEvent>
     private static final Logger log = LoggerFactory.getLogger(AutoInstaller.class);
 
     private enum InstallState {
-        NOT_STARTED,
-        CHECKING,
-        INSTALLING,
-        READY,
-        FAILED
+        NOT_STARTED, CHECKING, INSTALLING, READY, FAILED
     }
 
     private enum OSType {
@@ -63,8 +59,6 @@ public class AutoInstaller implements ApplicationListener<ApplicationReadyEvent>
     }
 
     private boolean isWindows() { return osType == OSType.WINDOWS; }
-    private boolean isMacOS() { return osType == OSType.MACOS; }
-    private boolean isLinux() { return osType == OSType.LINUX; }
 
     private void initializeAsync() {
         state = InstallState.CHECKING;
@@ -82,33 +76,24 @@ public class AutoInstaller implements ApplicationListener<ApplicationReadyEvent>
 
     private void logInstallationHelp() {
         log.info("To install Ollama manually:");
-        switch (osType) {
-            case WINDOWS -> {
-                log.info("  Download from: https://github.com/ollama/ollama/releases");
-                log.info("  Or run in PowerShell as Admin:");
-                log.info("    iwr https://ollama.com/install.ps1 -useb | iex");
-            }
-            case MACOS -> log.info("  Run: brew install ollama");
-            case LINUX -> log.info("  Run: curl -fsSL https://ollama.com/install.sh | sh");
-            default -> log.info("  Visit: https://ollama.com/download");
+        if (osType == OSType.WINDOWS) {
+            log.info("  Download from: https://github.com/ollama/ollama/releases");
+        } else if (osType == OSType.MACOS) {
+            log.info("  Run: brew install ollama");
+        } else if (osType == OSType.LINUX) {
+            log.info("  Run: curl -fsSL https://ollama.com/install.sh | sh");
+        } else {
+            log.info("  Visit: https://ollama.com/download");
         }
     }
 
     private boolean checkOllamaInstalled() {
         try {
-            ProcessBuilder pb;
-            if (isWindows()) {
-                pb = new ProcessBuilder("ollama.exe", "--version");
-            } else {
-                pb = new ProcessBuilder("ollama", "--version");
-            }
+            ProcessBuilder pb = new ProcessBuilder(isWindows() ? "ollama.exe" : "ollama", "--version");
             pb.redirectErrorStream(true);
             Process p = pb.start();
             boolean exists = p.waitFor(5, TimeUnit.SECONDS) && p.exitValue() == 0;
-            
-            if (exists) {
-                log.info("Ollama version: {}", getOllamaVersion());
-            }
+            if (exists) log.info("Ollama version: {}", getOllamaVersion());
             return exists;
         } catch (Exception e) {
             log.debug("Ollama not found: {}", e.getMessage());
@@ -118,14 +103,10 @@ public class AutoInstaller implements ApplicationListener<ApplicationReadyEvent>
 
     private String getOllamaVersion() {
         try {
-            ProcessBuilder pb = isWindows() 
-                ? new ProcessBuilder("ollama.exe", "--version")
-                : new ProcessBuilder("ollama", "--version");
+            ProcessBuilder pb = new ProcessBuilder(isWindows() ? "ollama.exe" : "ollama", "--version");
             pb.redirectErrorStream(true);
             Process p = pb.start();
-            
-            java.io.BufferedReader reader = new java.io.BufferedReader(
-                new java.io.InputStreamReader(p.getInputStream()));
+            BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()));
             String version = reader.readLine();
             p.waitFor(3, TimeUnit.SECONDS);
             return version != null ? version.trim() : "unknown";
@@ -170,17 +151,11 @@ public class AutoInstaller implements ApplicationListener<ApplicationReadyEvent>
 
     private void startOllamaBackground() {
         try {
-            ProcessBuilder pb;
-            if (isWindows()) {
-                pb = new ProcessBuilder("ollama.exe", "serve");
-                pb.environment().put("PATH", System.getenv("PATH"));
-            } else {
-                pb = new ProcessBuilder("ollama", "serve");
-            }
+            ProcessBuilder pb = new ProcessBuilder(isWindows() ? "ollama.exe" : "ollama", "serve");
             pb.redirectErrorStream(true);
             pb.start();
             log.info("Ollama server started");
-        } catch (IOException e) {
+        } catch (Exception e) {
             log.debug("Could not start Ollama: {}", e.getMessage());
         }
     }
@@ -188,18 +163,19 @@ public class AutoInstaller implements ApplicationListener<ApplicationReadyEvent>
     private void checkModelsAsync() {
         log.info("Checking AI models...");
         
-        checkModel(config.getModel().getSimpleModel(), "Simple");
-        checkModel(config.getModel().getComplexModel(), "Complex");
+        String simpleModel = config.getModel().getSimpleModel();
+        String complexModel = config.getModel().getComplexModel();
+        
+        checkAndPromptModel(simpleModel, "Simple");
+        checkAndPromptModel(complexModel, "Complex");
         
         state = InstallState.READY;
         log.info("=== V.E.C.T.O.R Initialization Complete ===");
     }
 
-    private void checkModel(String modelName, String type) {
+    private void checkAndPromptModel(String modelName, String type) {
         try {
-            ProcessBuilder pb = isWindows()
-                ? new ProcessBuilder("ollama.exe", "list")
-                : new ProcessBuilder("ollama", "list");
+            ProcessBuilder pb = new ProcessBuilder(isWindows() ? "ollama.exe" : "ollama", "list");
             pb.redirectErrorStream(true);
             Process p = pb.start();
             
@@ -208,9 +184,8 @@ public class AutoInstaller implements ApplicationListener<ApplicationReadyEvent>
                 : modelName;
             modelShort = modelShort.split(":")[0].split("-")[0].toLowerCase();
             
-            java.io.BufferedReader reader = new java.io.BufferedReader(
-                new java.io.InputStreamReader(p.getInputStream()));
-            String output = reader.readLine();
+            BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()));
+            String output;
             while ((output = reader.readLine()) != null) {
                 if (output.toLowerCase().contains(modelShort)) {
                     log.info("{} model ({}) already installed", type, modelName);
@@ -218,7 +193,7 @@ public class AutoInstaller implements ApplicationListener<ApplicationReadyEvent>
                 }
             }
             
-            log.info("{} model ({}) - may need to be pulled", type, modelName);
+            log.warn("{} model ({}) - NOT FOUND. To install run: ollama pull {}", type, modelName, modelName);
             
         } catch (Exception e) {
             log.warn("Model check error: {}", e.getMessage());

@@ -13,13 +13,6 @@ public class VectorApp extends JFrame {
     private JTextField input;
     private JButton send;
     private volatile boolean loading = false;
-    
-    private Color bg = new Color(30, 30, 40);
-    private Color inputBg = new Color(50, 50, 70);
-    private Color textColor = Color.WHITE;
-    private Color userColor = new Color(100, 180, 255);
-    private Color botColor = Color.WHITE;
-    private Color errorColor = new Color(255, 100, 100);
 
     static {
         try {
@@ -32,89 +25,119 @@ public class VectorApp extends JFrame {
 
     public VectorApp() {
         super("V.E.C.T.O.R");
-        logger.info("=== APP STARTED ===");
+        logger.info("APP STARTED");
         
         setDefaultCloseOperation(EXIT_ON_CLOSE);
         setSize(500, 600);
         setLocationRelativeTo(null);
         
-        // Only set colors, no complex look and feel
-        setBackground(bg);
-        getContentPane().setBackground(bg);
+        Color bgColor = new Color(35, 35, 50);
+        Color darkBg = new Color(50, 50, 75);
+        
+        // Main panel with color
+        setLayout(new BorderLayout());
+        getContentPane().setBackground(bgColor);
         
         // Header
         JPanel header = new JPanel(new BorderLayout());
-        header.setBackground(new Color(40, 40, 60));
-        JLabel title = new JLabel("V.E.C.T.O.R");
-        title.setFont(new Font("Arial", Font.BOLD, 18));
-        title.setForeground(new Color(0, 200, 255));
-        header.add(title, BorderLayout.WEST);
-        header.setBorder(BorderFactory.createEmptyBorder(10, 15, 10, 15));
+        header.setBackground(darkBg);
+        header.setPreferredSize(new Dimension(0, 50));
         
-        // Chat
+        JLabel title = new JLabel("V.E.C.T.O.R");
+        title.setFont(new Font("Arial", Font.BOLD, 20));
+        title.setForeground(new Color(0, 212, 255));
+        title.setBackground(darkBg);
+        title.setOpaque(true);
+        
+        JLabel status = new JLabel("Online");
+        status.setFont(new Font("Arial", Font.PLAIN, 12));
+        status.setForeground(new Color(100, 255, 100));
+        status.setBackground(darkBg);
+        status.setOpaque(true);
+        
+        header.add(title, BorderLayout.WEST);
+        header.add(status, BorderLayout.EAST);
+        
+        // Chat - white text on dark background
         chat = new JTextArea();
         chat.setEditable(false);
-        chat.setBackground(bg);
-        chat.setForeground(botColor);
+        chat.setBackground(bgColor);
+        chat.setForeground(Color.WHITE);
         chat.setFont(new Font("Arial", Font.PLAIN, 14));
+        chat.setCaretColor(Color.WHITE);
+        chat.setBorder(BorderFactory.createEmptyBorder(10, 15, 10, 15));
         
-        // Input
+        // Scroll for chat
+        JScrollPane chatScroll = new JScrollPane(chat);
+        chatScroll.setBackground(bgColor);
+        chatScroll.setBorder(null);
+        
+        // Input field
         input = new JTextField();
-        input.setBackground(inputBg);
-        input.setForeground(textColor);
-        input.setCaretColor(textColor);
+        input.setBackground(darkBg);
+        input.setForeground(Color.WHITE);
+        input.setCaretColor(Color.WHITE);
+        input.setFont(new Font("Arial", Font.PLAIN, 14));
+        input.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
         
+        // Send button - blue
         send = new JButton("Send");
         send.setFont(new Font("Arial", Font.BOLD, 14));
+        send.setBackground(new Color(60, 120, 220));
+        send.setForeground(Color.WHITE);
+        send.setFocusPainted(false);
         
+        // Bottom panel
         JPanel bottom = new JPanel(new BorderLayout(5, 0));
-        bottom.setBackground(new Color(40, 40, 60));
+        bottom.setBackground(darkBg);
+        bottom.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
         bottom.add(input, BorderLayout.CENTER);
         bottom.add(send, BorderLayout.EAST);
-        bottom.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
         
+        // Add to frame
         add(header, BorderLayout.NORTH);
-        add(new JScrollPane(chat), BorderLayout.CENTER);
+        add(chatScroll, BorderLayout.CENTER);
         add(bottom, BorderLayout.SOUTH);
         
-        // One-time event
+        // Events
         send.addActionListener(e -> onSend());
         input.addActionListener(e -> onSend());
         
         setVisible(true);
-        appendChat("Hello! I'm V.E.C.T.O.R.\nHow can I help?");
         
-        logger.info("APP READY");
+        // Say hello
+        appendChat("Hello! I'm V.E.C.T.O.R");
+        appendChat("How can I help you today?");
+        
+        logger.info("APP READY - showing UI");
     }
 
     private void onSend() {
         String q = input.getText().trim();
         if (q.isEmpty() || loading) return;
         
-        logger.info("USER: " + q);
         appendChat("You: " + q);
         input.setText("");
         loading = true;
-        send.setText("...");
-        input.setEnabled(false);
+        send.setEnabled(false);
+        
+        logger.info("Sending: " + q);
         
         new Thread(() -> {
             try {
-                String r = callAPI(q);
-                logger.info("GOT: " + r.substring(0, Math.min(50, r.length())));
+                String response = callAPI(q);
+                logger.info("Got: " + response.substring(0, 50));
                 SwingUtilities.invokeLater(() -> {
-                    appendChat("V.E.C.T.O.R: " + r);
+                    appendChat("V.E.C.T.O.R: " + response);
                     loading = false;
-                    send.setText("Send");
-                    input.setEnabled(true);
+                    send.setEnabled(true);
                 });
             } catch (Exception e) {
-                logger.severe("ERROR: " + e.getMessage());
+                logger.severe("Error: " + e.getMessage());
                 SwingUtilities.invokeLater(() -> {
                     appendChat("ERROR: " + e.getMessage());
                     loading = false;
-                    send.setText("Send");
-                    input.setEnabled(true);
+                    send.setEnabled(true);
                 });
             }
         }).start();
@@ -126,10 +149,12 @@ public class VectorApp extends JFrame {
         c.setRequestMethod("POST");
         c.setRequestProperty("Content-Type", "application/json");
         c.setDoOutput(true);
-        c.getOutputStream().write(("{\"question\":\"" + q.replace("\"", "\\\"") + "\"}").getBytes());
+        
+        String json = "{\"question\":\"" + q.replace("\"", "\\\"") + "\"}";
+        c.getOutputStream().write(json.getBytes());
         
         if (c.getResponseCode() != 200) {
-            throw new Exception("Code: " + c.getResponseCode());
+            throw new Exception("Server: " + c.getResponseCode());
         }
         
         BufferedReader r = new BufferedReader(new InputStreamReader(c.getInputStream()));
@@ -138,21 +163,22 @@ public class VectorApp extends JFrame {
         while ((line = r.readLine()) != null) sb.append(line);
         r.close();
         
-        int i = sb.indexOf("\"answer\"");
-        if (i < 0) return "No answer";
-        i = sb.indexOf(":", i) + 1;
-        int end = sb.indexOf(",", i);
-        if (end < 0) end = sb.indexOf("}", i);
-        return sb.substring(i, end).replace("\"", "").trim();
+        String s = sb.toString();
+        int start = s.indexOf("\"answer\"");
+        if (start < 0) return "No response";
+        start = s.indexOf(":", start) + 1;
+        int end = s.indexOf(",", start);
+        if (end < 0) end = s.indexOf("}", start);
+        return s.substring(start, end).replace("\"", "").trim();
     }
 
-    private void appendChat(String txt) {
-        chat.append(txt + "\n\n");
+    private void appendChat(String text) {
+        chat.append(text + "\n\n");
         chat.setCaretPosition(chat.getText().length());
     }
 
     public static void main(String[] args) {
-        logger.info("MAIN");
+        logger.info("MAIN START");
         SwingUtilities.invokeLater(() -> new VectorApp());
     }
 }

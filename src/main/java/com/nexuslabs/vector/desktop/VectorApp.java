@@ -11,6 +11,12 @@ public class VectorApp extends Frame implements ActionListener {
     private TextField input = new TextField();
     private Button send = new Button("SEND");
     private boolean loading = false;
+    private boolean floating = true;
+
+    static {
+        System.setProperty("awt.useSystemAAFontSettings", "on");
+        System.setProperty("sun.awt.disableGraphicDoubleBuffer", "true");
+    }
 
     public VectorApp() {
         super("V.E.C.T.O.R");

@@ -2,183 +2,105 @@ package com.nexuslabs.vector.desktop;
 
 import javax.swing.*;
 import java.awt.*;
-import java.io.*;
-import java.net.*;
-import java.util.logging.*;
 
 public class VectorApp extends JFrame {
 
-    private static final Logger logger = Logger.getLogger("VectorApp");
     private JTextArea chat;
     private JTextField input;
     private JButton send;
-    private volatile boolean loading = false;
-
-    static {
-        try {
-            FileHandler fh = new FileHandler("vector-app.log", true);
-            fh.setFormatter(new SimpleFormatter());
-            logger.addHandler(fh);
-            logger.setLevel(Level.ALL);
-        } catch (Exception e) {}
-    }
+    private boolean loading = false;
 
     public VectorApp() {
         super("V.E.C.T.O.R");
-        logger.info("APP STARTED");
+        System.out.println("Constructor started");
         
-        setDefaultCloseOperation(EXIT_ON_CLOSE);
+        // Force window to be visible and have content
         setSize(500, 600);
-        setLocationRelativeTo(null);
+        setLocation(100, 100);
         
-        Color bgColor = new Color(35, 35, 50);
-        Color darkBg = new Color(50, 50, 75);
+        // SIMPLE - no layouts, just put components in
+        setLayout(null);
+        setBackground(Color.BLACK);
         
-        // Main panel with color
-        setLayout(new BorderLayout());
-        getContentPane().setBackground(bgColor);
+        // Header label - blue text
+        JLabel header = new JLabel("V.E.C.T.O.R");
+        header.setBounds(0, 0, 500, 40);
+        header.setBackground(Color.BLUE);
+        header.setForeground(Color.CYAN);
+        header.setOpaque(true);
+        header.setFont(new Font("Arial", Font.BOLD, 24));
+        add(header);
         
-        // Header
-        JPanel header = new JPanel(new BorderLayout());
-        header.setBackground(darkBg);
-        header.setPreferredSize(new Dimension(0, 50));
-        
-        JLabel title = new JLabel("V.E.C.T.O.R");
-        title.setFont(new Font("Arial", Font.BOLD, 20));
-        title.setForeground(new Color(0, 212, 255));
-        title.setBackground(darkBg);
-        title.setOpaque(true);
-        
-        JLabel status = new JLabel("Online");
-        status.setFont(new Font("Arial", Font.PLAIN, 12));
-        status.setForeground(new Color(100, 255, 100));
-        status.setBackground(darkBg);
-        status.setOpaque(true);
-        
-        header.add(title, BorderLayout.WEST);
-        header.add(status, BorderLayout.EAST);
-        
-        // Chat - white text on dark background
+        // Chat area - black background, white text
         chat = new JTextArea();
-        chat.setEditable(false);
-        chat.setBackground(bgColor);
+        chat.setBounds(0, 40, 500, 400);
+        chat.setBackground(Color.BLACK);
         chat.setForeground(Color.WHITE);
         chat.setFont(new Font("Arial", Font.PLAIN, 14));
-        chat.setCaretColor(Color.WHITE);
-        chat.setBorder(BorderFactory.createEmptyBorder(10, 15, 10, 15));
-        
-        // Scroll for chat
-        JScrollPane chatScroll = new JScrollPane(chat);
-        chatScroll.setBackground(bgColor);
-        chatScroll.setBorder(null);
+        chat.setEditable(false);
+        add(chat);
         
         // Input field
         input = new JTextField();
-        input.setBackground(darkBg);
+        input.setBounds(0, 440, 400, 40);
+        input.setBackground(Color.DARK_GRAY);
         input.setForeground(Color.WHITE);
         input.setCaretColor(Color.WHITE);
-        input.setFont(new Font("Arial", Font.PLAIN, 14));
-        input.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        add(input);
         
-        // Send button - blue
-        send = new JButton("Send");
-        send.setFont(new Font("Arial", Font.BOLD, 14));
-        send.setBackground(new Color(60, 120, 220));
+        // Send button
+        send = new JButton("SEND");
+        send.setBounds(400, 440, 100, 40);
+        send.setBackground(Color.BLUE);
         send.setForeground(Color.WHITE);
-        send.setFocusPainted(false);
+        send.addActionListener(e -> sendMessage());
+        add(send);
         
-        // Bottom panel
-        JPanel bottom = new JPanel(new BorderLayout(5, 0));
-        bottom.setBackground(darkBg);
-        bottom.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
-        bottom.add(input, BorderLayout.CENTER);
-        bottom.add(send, BorderLayout.EAST);
-        
-        // Add to frame
-        add(header, BorderLayout.NORTH);
-        add(chatScroll, BorderLayout.CENTER);
-        add(bottom, BorderLayout.SOUTH);
-        
-        // Events
-        send.addActionListener(e -> onSend());
-        input.addActionListener(e -> onSend());
-        
+        setDefaultCloseOperation(EXIT_ON_CLOSE);
         setVisible(true);
         
-        // Say hello
-        appendChat("Hello! I'm V.E.C.T.O.R");
-        appendChat("How can I help you today?");
-        
-        logger.info("APP READY - showing UI");
+        chat.setText("V.E.C.T.O.R\nHello! How can I help?\n\n");
+        System.out.println("UI created");
     }
 
-    private void onSend() {
-        String q = input.getText().trim();
-        if (q.isEmpty() || loading) return;
+    private void sendMessage() {
+        String q = input.getText();
+        if (q.isEmpty()) return;
         
-        appendChat("You: " + q);
+        chat.append("You: " + q + "\n");
         input.setText("");
-        loading = true;
-        send.setEnabled(false);
         
-        logger.info("Sending: " + q);
+        chat.append("Thinking...\n");
         
         new Thread(() -> {
             try {
-                String response = callAPI(q);
-                logger.info("Got: " + response.substring(0, 50));
-                SwingUtilities.invokeLater(() -> {
-                    appendChat("V.E.C.T.O.R: " + response);
-                    loading = false;
-                    send.setEnabled(true);
-                });
+                String r = callAPI(q);
+                chat.append("V.E.C.T.O.R: " + r + "\n\n");
             } catch (Exception e) {
-                logger.severe("Error: " + e.getMessage());
-                SwingUtilities.invokeLater(() -> {
-                    appendChat("ERROR: " + e.getMessage());
-                    loading = false;
-                    send.setEnabled(true);
-                });
+                chat.append("ERROR: " + e.getMessage() + "\n");
             }
         }).start();
     }
 
     private String callAPI(String q) throws Exception {
-        URL url = new URL("http://localhost:8080/api/ask");
-        HttpURLConnection c = (HttpURLConnection) url.openConnection();
+        java.net.URL url = new java.net.URL("http://localhost:8080/api/ask");
+        java.net.HttpURLConnection c = (java.net.HttpURLConnection) url.openConnection();
         c.setRequestMethod("POST");
         c.setRequestProperty("Content-Type", "application/json");
         c.setDoOutput(true);
+        c.getOutputStream().write(("{\"question\":\"" + q + "\"}").getBytes());
         
-        String json = "{\"question\":\"" + q.replace("\"", "\\\"") + "\"}";
-        c.getOutputStream().write(json.getBytes());
-        
-        if (c.getResponseCode() != 200) {
-            throw new Exception("Server: " + c.getResponseCode());
-        }
-        
-        BufferedReader r = new BufferedReader(new InputStreamReader(c.getInputStream()));
+        java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(c.getInputStream()));
         StringBuilder sb = new StringBuilder();
         String line;
         while ((line = r.readLine()) != null) sb.append(line);
         r.close();
         
-        String s = sb.toString();
-        int start = s.indexOf("\"answer\"");
-        if (start < 0) return "No response";
-        start = s.indexOf(":", start) + 1;
-        int end = s.indexOf(",", start);
-        if (end < 0) end = s.indexOf("}", start);
-        return s.substring(start, end).replace("\"", "").trim();
-    }
-
-    private void appendChat(String text) {
-        chat.append(text + "\n\n");
-        chat.setCaretPosition(chat.getText().length());
+        return sb.toString();
     }
 
     public static void main(String[] args) {
-        logger.info("MAIN START");
-        SwingUtilities.invokeLater(() -> new VectorApp());
+        System.out.println("Main called");
+        new VectorApp();
     }
 }

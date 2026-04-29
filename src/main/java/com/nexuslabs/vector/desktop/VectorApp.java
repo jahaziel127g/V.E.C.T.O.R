@@ -14,58 +14,70 @@ public class VectorApp {
     private boolean loading = false;
 
     public VectorApp() {
-        System.out.println("Starting...");
+        System.out.println("Creating window...");
         
         frame = new JFrame("V.E.C.T.O.R");
         frame.setSize(500, 600);
-        frame.setLocation(100, 100);
+        frame.setLocation(200, 100);
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         
-        frame.setBackground(Color.BLACK);
-        frame.getContentPane().setBackground(Color.BLACK);
+        // Create components
+        frame.setLayout(new BorderLayout());
         
-        JPanel main = new JPanel(null);
-        main.setBackground(Color.BLACK);
-        
-        JLabel header = new JLabel("V.E.C.T.O.R", JLabel.CENTER);
-        header.setBounds(0, 0, 500, 40);
-        header.setBackground(Color.BLUE);
+        // Header - cyan on blue
+        JLabel header = new JLabel("V.E.C.T.O.R", SwingConstants.CENTER);
+        header.setPreferredSize(new Dimension(500, 50));
+        header.setBackground(new Color(50, 50, 150));
         header.setForeground(Color.CYAN);
         header.setOpaque(true);
-        header.setFont(new Font("Arial", Font.BOLD, 20));
-        main.add(header);
+        header.setFont(new Font("SansSerif", Font.BOLD, 28));
+        frame.add(header, BorderLayout.NORTH);
         
+        // Chat - white on black
         chat = new JTextArea();
-        chat.setBounds(0, 40, 500, 420);
         chat.setBackground(Color.BLACK);
         chat.setForeground(Color.WHITE);
+        chat.setFont(new Font("SansSerif", Font.PLAIN, 16));
         chat.setEditable(false);
-        chat.setFont(new Font("Arial", Font.PLAIN, 14));
-        chat.setText("V.E.C.T.O.R - AI Assistant\n\nAsk me anything!\n");
-        main.add(chat);
+        chat.setText("V.E.C.T.O.R - AI Assistant\n\nType a question and press SEND or ENTER\n\n");
+        chat.setCaretColor(Color.WHITE);
+        
+        JScrollPane scroll = new JScrollPane(chat);
+        frame.add(scroll, BorderLayout.CENTER);
+        
+        // Bottom panel
+        JPanel bottom = new JPanel(new BorderLayout());
+        bottom.setBackground(Color.DARK_GRAY);
         
         input = new JTextField();
-        input.setBounds(0, 460, 400, 40);
         input.setBackground(Color.DARK_GRAY);
         input.setForeground(Color.WHITE);
+        input.setFont(new Font("SansSerif", Font.PLAIN, 16));
         input.setCaretColor(Color.WHITE);
-        input.setFont(new Font("Arial", Font.PLAIN, 14));
-        main.add(input);
+        input.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
         
         send = new JButton("SEND");
-        send.setBounds(400, 460, 100, 40);
-        send.setBackground(Color.BLUE);
+        send.setBackground(new Color(50, 100, 200));
         send.setForeground(Color.WHITE);
-        send.setFont(new Font("Arial", Font.BOLD, 14));
-        send.addActionListener(e -> onSend());
-        main.add(send);
+        send.setFont(new Font("SansSerif", Font.BOLD, 16));
+        send.setPreferredSize(new Dimension(100, 0));
         
+        bottom.add(input, BorderLayout.CENTER);
+        bottom.add(send, BorderLayout.EAST);
+        frame.add(bottom, BorderLayout.SOUTH);
+        
+        // Action listeners
+        send.addActionListener(e -> onSend());
         input.addActionListener(e -> onSend());
         
-        frame.add(main);
+        // Show
         frame.setVisible(true);
         
-        System.out.println("Window ready!");
+        // Force repaint
+        frame.validate();
+        frame.repaint();
+        
+        System.out.println("Window displayed!");
     }
 
     private void onSend() {
@@ -77,57 +89,54 @@ public class VectorApp {
         
         loading = true;
         send.setEnabled(false);
+        
         chat.append("Thinking...\n");
         
         new Thread(() -> {
             try {
                 String response = callAPI(q);
                 chat.append("V.E.C.T.O.R: " + response + "\n\n");
-                chat.setCaretPosition(chat.getText().length());
             } catch (Exception e) {
-                chat.append("ERROR: " + e.getMessage() + "\n");
+                chat.append("ERROR: " + e.getMessage() + "\n\n");
             }
             
             loading = false;
             send.setEnabled(true);
+            chat.setCaretPosition(chat.getText().length());
         }).start();
     }
 
-    private String callAPI(String question) throws Exception {
+    private String callAPI(String q) throws Exception {
         URL url = new URL("http://localhost:8080/api/ask");
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
         conn.setRequestMethod("POST");
         conn.setRequestProperty("Content-Type", "application/json");
         conn.setDoOutput(true);
         
-        String json = "{\"question\":\"" + question.replace("\"", "\\\"") + "\"}";
-        conn.getOutputStream().write(json.getBytes());
+        conn.getOutputStream().write(("{\"question\":\"" + q.replace("\"", "\\\"") + "\"}").getBytes());
         
-        int code = conn.getResponseCode();
-        if (code != 200) {
-            throw new Exception("Server error: " + code);
+        if (conn.getResponseCode() != 200) {
+            throw new Exception("Error: " + conn.getResponseCode());
         }
         
-        BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
-        StringBuilder response = new StringBuilder();
+        BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+        StringBuilder sb = new StringBuilder();
         String line;
-        while ((line = reader.readLine()) != null) {
-            response.append(line);
-        }
-        reader.close();
+        while ((line = br.readLine()) != null) sb.append(line);
+        br.close();
         
-        String jsonResponse = response.toString();
-        int answerStart = jsonResponse.indexOf("\"answer\"");
-        if (answerStart < 0) return "No answer found";
+        String json = sb.toString();
+        int start = json.indexOf("\"answer\"");
+        if (start < 0) return "No answer";
+        start = json.indexOf(":", start) + 1;
+        int end = json.indexOf(",", start);
+        if (end < 0) end = json.indexOf("}", start);
         
-        answerStart = jsonResponse.indexOf(":", answerStart) + 1;
-        int answerEnd = jsonResponse.indexOf(",", answerStart);
-        if (answerEnd < 0) answerEnd = jsonResponse.indexOf("}", answerStart);
-        
-        return jsonResponse.substring(answerStart, answerEnd).replace("\"", "").trim();
+        return json.substring(start, end).replace("\"", "").trim();
     }
 
     public static void main(String[] args) {
-        new VectorApp();
+        System.out.println("Starting V.E.C.T.O.R...");
+        SwingUtilities.invokeLater(() -> new VectorApp());
     }
 }

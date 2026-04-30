@@ -2,6 +2,7 @@ package com.nexuslabs.vector.inference;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.nexuslabs.vector.config.AppConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,6 +14,8 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 @Component
 public class OllamaClient {
@@ -28,31 +31,32 @@ public class OllamaClient {
         this.baseUrl = config.getOllama().getBaseUrl();
         this.timeoutSeconds = config.getOllama().getTimeoutSeconds();
         this.httpClient = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(30))
+                .version(HttpClient.Version.HTTP_1_1)
+                .connectTimeout(Duration.ofSeconds(10))
+                .executor(Executors.newFixedThreadPool(4))
                 .build();
         this.objectMapper = new ObjectMapper();
     }
 
     public String generate(String prompt, String model) {
         try {
-            String requestBody = String.format("""
-                {
-                    "model": "%s",
-                    "prompt": %s,
-                    "stream": false,
-                    "options": {
-                        "temperature": 0.7,
-                        "top_p": 0.9,
-                        "max_tokens": 500
-                    }
-                }
-                """, model, objectMapper.writeValueAsString(prompt));
+            // Create optimized JSON payload
+            ObjectNode requestBody = objectMapper.createObjectNode();
+            requestBody.put("model", model);
+            requestBody.put("prompt", prompt);
+            requestBody.put("stream", false);
+            
+            ObjectNode options = objectMapper.createObjectNode();
+            options.put("temperature", 0.7);
+            options.put("top_p", 0.9);
+            options.put("max_tokens", 200); // Reduced for faster response
+            requestBody.set("options", options);
 
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(baseUrl + "/api/generate"))
                     .header("Content-Type", "application/json")
                     .timeout(Duration.ofSeconds(timeoutSeconds))
-                    .POST(HttpRequest.BodyPublishers.ofString(requestBody))
+                    .POST(HttpRequest.BodyPublishers.ofString(requestBody.toString()))
                     .build();
 
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());

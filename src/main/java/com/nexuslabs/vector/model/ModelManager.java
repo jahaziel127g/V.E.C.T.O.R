@@ -10,6 +10,7 @@ import java.lang.management.ManagementFactory;
 import java.lang.management.MemoryMXBean;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 @Component
@@ -40,13 +41,14 @@ public class ModelManager {
         if (modelName.equals(current)) {
             return;
         }
-
+        
+        // Check if we need to unload current model due to RAM pressure
         if (checkRamThreshold()) {
             log.warn("RAM threshold exceeded, forcing fallback to lightweight model");
             switchToModel(simpleModel);
             return;
         }
-
+        
         switchToModel(modelName);
     }
 
@@ -64,14 +66,30 @@ public class ModelManager {
     private void unloadModel(String modelName) {
         log.info("Unloading model: {}", modelName);
         try {
-            ProcessBuilder pb = new ProcessBuilder("ollama", "unload", modelName.split(":")[0].split("/")[1]);
+            // Extract model name more efficiently
+            String modelShortName = extractModelName(modelName);
+            ProcessBuilder pb = new ProcessBuilder("ollama", "unload", modelShortName);
             pb.redirectErrorStream(true);
             Process p = pb.start();
-            p.waitFor(5, java.util.concurrent.TimeUnit.SECONDS);
+            // Wait for process to complete with timeout
+            if (!p.waitFor(5, TimeUnit.SECONDS)) {
+                p.destroyForcibly();
+                log.warn("Model unload timed out for: {}", modelName);
+            }
             log.info("Model unloaded: {}", modelName);
         } catch (Exception e) {
             log.debug("Could not unload model {}: {}", modelName, e.getMessage());
         }
+    }
+
+    private String extractModelName(String modelName) {
+        // Extract the model name part before any tag (e.g., "gemma3:1b-it-qat" -> "gemma3")
+        int slashIndex = modelName.lastIndexOf('/');
+        int colonIndex = modelName.indexOf(':', slashIndex >= 0 ? slashIndex : 0);
+        if (colonIndex > 0) {
+            return modelName.substring(0, colonIndex);
+        }
+        return modelName;
     }
 
     @Scheduled(fixedRate = 60000)

@@ -3,15 +3,26 @@
 ## Quick Commands
 
 ```bash
-# Build
+# Build (skips tests by default)
 mvn clean package -DskipTests
 
-# Run
+# Run JAR
 java -jar target/vector-1.0.0.jar
 
-# Test
+# Run in development (hot reload)
+mvn spring-boot:run
+
+# Run tests
+mvn test
+
+# API Health Check
 curl http://localhost:8080/api/health
+
+# Ask API example
 curl -X POST http://localhost:8080/api/ask -H "Content-Type: application/json" -d '{"question":"What is AI?"}'
+
+# Get Model Status
+curl http://localhost:8080/api/models
 ```
 
 ## Architecture
@@ -20,6 +31,7 @@ curl -X POST http://localhost:8080/api/ask -H "Content-Type: application/json" -
 - **API:** `AskController.java` - POST /api/ask
 - **Config:** `application.properties` - All settings
 - **Ollama:** Local port 11434
+- **Java:** Java 17+ is required.
 
 ## Pipeline
 
@@ -33,10 +45,10 @@ curl -X POST http://localhost:8080/api/ask -H "Content-Type: application/json" -
 
 ## Models
 
-| Query Type | Model | Size |
-|------------|-------|------|
-| Simple | Gemma 3 1B | ~800MB |
-| Complex | Gemma 2 2B | ~1.7GB |
+| Query Type | Model | Size | Use Case |
+|------------|-------|------|----------|
+| Simple | Gemma 3 1B | ~800MB | Fast, factual answers |
+| Complex | DeepSeek R1 1.5B | ~1.1GB | Reasoning, analysis |
 
 ## Config
 
@@ -45,10 +57,20 @@ Edit `application.properties`:
 - `vector.kiwix.zim-path`
 - `vector.model.simple-model`
 - `vector.model.complex-model`
+- `vector.model.idle-timeout-minutes`
+- `vector.model.max-ram-percent`
+- `vector.rate-limit.requests-per-minute`
+- `vector.rate-limit.tokens-per-request`
+- `vector.cache.answer-max-size`
+- `vector.cache.wiki-max-size`
+- `vector.cache.expire-after-minutes`
+- `vector.ollama.base-url`
+- `vector.ollama.timeout-seconds`
 
 ## Notes
 
-- Wikipedia requires `zim-tools` package (`sudo pacman -S zim-tools`)
-- Models unload before switching (RAM safety)
-- Startup runs async (non-blocking)
-- ZIM file path must exist for Wikipedia
+- Ollama and models are auto-installed on first run.
+- Wikipedia integration requires `zim-tools` package (`sudo pacman -S zim-tools`).
+- ZIM file path must exist for Wikipedia integration to work.
+- Models unload from RAM before switching for memory safety.
+- Startup runs asynchronously (non-blocking).

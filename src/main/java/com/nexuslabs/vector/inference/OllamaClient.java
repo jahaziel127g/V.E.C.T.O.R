@@ -40,34 +40,34 @@ public class OllamaClient {
 
     public String generate(String prompt, String model) {
         try {
-            // Create optimized JSON payload
+            // Create optimized JSON payload - num_predict must be inside options
             ObjectNode requestBody = objectMapper.createObjectNode();
             requestBody.put("model", model);
             requestBody.put("prompt", prompt);
             requestBody.put("stream", false);
-            requestBody.put("num_predict", 200); // Reduced for faster response
             
             ObjectNode options = objectMapper.createObjectNode();
             options.put("temperature", 0.7);
             options.put("top_p", 0.9);
+            options.put("num_predict", 200); // Reduced for faster response
             requestBody.set("options", options);
-
+            
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(baseUrl + "/api/generate"))
                     .header("Content-Type", "application/json")
                     .timeout(Duration.ofSeconds(timeoutSeconds))
                     .POST(HttpRequest.BodyPublishers.ofString(requestBody.toString()))
                     .build();
-
+            
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-
+            
             if (response.statusCode() == 200) {
                 return parseResponse(response.body());
             } else {
                 log.error("Ollama request failed with status {}: {}", response.statusCode(), response.body());
                 return "I apologize, but I encountered an error processing your request. Please try again.";
             }
-
+            
         } catch (IOException | InterruptedException e) {
             log.error("Ollama request failed: {}", e.getMessage());
             Thread.currentThread().interrupt();

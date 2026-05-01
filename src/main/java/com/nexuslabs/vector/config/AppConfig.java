@@ -99,6 +99,7 @@ public class AppConfig {
         private String zimPath = "/var/lib/kiwix/wikipedia.zim";
         private String fallbackDataDir = "";
         private int maxResults = 5;
+        private int port = 8081;
 
         public String getZimPath() { return zimPath; }
         public void setZimPath(String zimPath) { this.zimPath = zimPath; }
@@ -106,6 +107,8 @@ public class AppConfig {
         public void setFallbackDataDir(String dir) { this.fallbackDataDir = dir; }
         public int getMaxResults() { return maxResults; }
         public void setMaxResults(int maxResults) { this.maxResults = maxResults; }
+        public int getPort() { return port; }
+        public void setPort(int port) { this.port = port; }
     }
 
     public static class Wikipedia {

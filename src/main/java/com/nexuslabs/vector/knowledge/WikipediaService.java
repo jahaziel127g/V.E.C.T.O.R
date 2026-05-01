@@ -33,7 +33,8 @@ public class WikipediaService {
 
     private boolean isKiwixRunning() {
         try {
-            URL url = new URL("http://localhost:8080");
+            int kiwixPort = config.getKiwix().getPort();
+            URL url = new URL("http://localhost:" + kiwixPort);
             HttpURLConnection connection = (HttpURLConnection) url.openConnection();
             connection.setConnectTimeout(1500); // 1.5 seconds
             connection.setRequestMethod("HEAD");
@@ -54,8 +55,9 @@ public class WikipediaService {
             log.warn("Cannot start Kiwix: ZIM file not found at {}", zimPath);
             return;
         }
+        int kiwixPort = config.getKiwix().getPort();
         try {
-            ProcessBuilder pb = new ProcessBuilder("kiwix-serve", "--port=8080", zimPath);
+            ProcessBuilder pb = new ProcessBuilder("kiwix-serve", "--port=" + kiwixPort, zimPath);
             pb.redirectErrorStream(true);
             Process process = pb.start();
             // Consume output to avoid blocking (we don't need to log it)
@@ -71,7 +73,7 @@ public class WikipediaService {
                 }
             }).start();
             kiwixStarted = true;
-            log.info("Kiwix server started for ZIM: {}", zimPath);
+            log.info("Kiwix server started on port {} for ZIM: {}", kiwixPort, zimPath);
         } catch (IOException e) {
             log.warn("Failed to start Kiwix server: {}", e.getMessage());
         }
@@ -137,10 +139,11 @@ public class WikipediaService {
 
     private Optional<String> searchWithKiwixApi(String query) {
         try {
+            int kiwixPort = config.getKiwix().getPort();
             // Use the Kiwix HTTP API to search
-            String apiUrl = "http://localhost:8080/api?action=query&list=search&srsearch=" + 
-                           java.net.URLEncoder.encode(query, StandardCharsets.UTF_8) +
-                           "&format=json&srlimit=1";
+            String apiUrl = "http://localhost:" + kiwixPort + "/api?action=query&list=search&srsearch=" + 
+                               java.net.URLEncoder.encode(query, StandardCharsets.UTF_8) +
+                               "&format=json&srlimit=1";
             URL url = new URL(apiUrl);
             HttpURLConnection connection = (HttpURLConnection) url.openConnection();
             connection.setConnectTimeout(3000); // 3 seconds
@@ -149,12 +152,137 @@ public class WikipediaService {
             int responseCode = connection.getResponseCode();
             if (responseCode == HttpURLConnection.HTTP_OK) {
                 try (BufferedReader reader = new BufferedReader(
-                        new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8))) {
+                            new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8))) {
                     StringBuilder response = new StringBuilder();
                     String line;
                     while ((line = reader.readLine()) != null) {
                         response.append(line);
                     }
+                    
+                    // Parse JSON response to extract page ID
+                    String jsonResponse = response.toString();
+                    int pageIdStart = jsonResponse.indexOf("\"pageid\":");
+                    if (pageIdStart != -1) {
+                        pageIdStart += 9; // Length of "\"pageid\":"
+                        int pageIdEnd = jsonResponse.indexOf(",", pageIdStart);
+                        if (pageIdEnd == -1) {
+                            pageIdEnd = jsonResponse.indexOf("}", pageIdStart);
+                        }
+                        if (pageIdEnd != -1) {
+                            String pageIdStr = jsonResponse.substring(pageIdStart, pageIdEnd).trim();
+                            int pageId = Integer.parseInt(pageIdStr);
+                            
+                            // Get the content of the page
+                            String contentUrl = "http://localhost:" + kiwixPort + 
+                                                   "/api?action=query&prop=extracts&exintro&explaintext&pageids=" + 
+                                                   pageId + "&format=json";
+                            URL contentUrlObj = new URL(contentUrl);
+                            HttpURLConnection contentConnection = (HttpURLConnection) contentUrlObj.openConnection();
+                            contentConnection.setConnectTimeout(3000);
+                            contentConnection.setRequestMethod("GET");
+                            
+                            if (contentConnection.getResponseCode() == HttpURLConnection.HTTP_OK) {
+                                try (BufferedReader contentReader = new BufferedReader(
+                                            new InputStreamReader(contentConnection.getInputStream(), StandardCharsets.UTF_8))) {
+                                    StringBuilder contentResponse = new StringBuilder();
+                                    String contentLine;
+                                    while ((contentLine = contentReader.readLine()) != null) {
+                                        contentResponse.append(contentLine);
+                                    }
+                                    
+                                    String contentJson = contentResponse.toString();
+                                    int extractStart = contentJson.indexOf("\"extract\":\"");
+                                    if (extractStart != -1) {
+                                        extractStart += 11; // Length of "\"extract\":\""
+                                        int extractEnd = contentJson.indexOf("\"", extractStart);
+                                        if (extractEnd != -1) {
+                                            String extract = contentJson.substring(extractStart, extractEnd);
+                                            // Unescape JSON string
+                                            extract = extract.replace("\\\\", "\\").replace("\\\"", "\"").replace("\\n", " ").replace("\\t", " ");
+                                            
+                                            // Clean up HTML entities and limit length
+                                            String cleaned = Jsoup.parse(extract).text();
+                                            if (cleaned.length() > config.getWikipedia().getMaxChars()) {
+                                                cleaned = cleaned.substring(0, config.getWikipedia().getMaxChars());
+                                            }
+                                            
+                                            log.info("Found ZIM article for: {}", query);
+                                            return Optional.of(cleaned);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.debug("Kiwix API search failed: {}", e.getMessage());
+        }
+        return Optional.empty();
+    }
+                    
+                    // Parse JSON response to extract page ID
+                    String jsonResponse = response.toString();
+                    int pageIdStart = jsonResponse.indexOf("\"pageid\":");
+                    if (pageIdStart != -1) {
+                        pageIdStart += 9; // Length of "\"pageid\":"
+                        int pageIdEnd = jsonResponse.indexOf(",", pageIdStart);
+                        if (pageIdEnd == -1) {
+                            pageIdEnd = jsonResponse.indexOf("}", pageIdStart);
+                        }
+                        if (pageIdEnd != -1) {
+                            String pageIdStr = jsonResponse.substring(pageIdStart, pageIdEnd).trim();
+                            int pageId = Integer.parseInt(pageIdStr);
+                            
+                            // Get the content of the page
+                            String contentUrl = "http://localhost:" + kiwixPort + "/api?action=query&prop=extracts&exintro&explaintext&pageids=" + 
+                                                   pageId + "&format=json";
+                            URL contentUrlObj = new URL(contentUrl);
+                            HttpURLConnection contentConnection = (HttpURLConnection) contentUrlObj.openConnection();
+                            contentConnection.setConnectTimeout(3000);
+                            contentConnection.setRequestMethod("GET");
+                            
+                            if (contentConnection.getResponseCode() == HttpURLConnection.HTTP_OK) {
+                                try (BufferedReader contentReader = new BufferedReader(
+                                            new InputStreamReader(contentConnection.getInputStream(), StandardCharsets.UTF_8))) {
+                                    StringBuilder contentResponse = new StringBuilder();
+                                    String contentLine;
+                                    while ((contentLine = contentReader.readLine()) != null) {
+                                        contentResponse.append(contentLine);
+                                    }
+                                    
+                                    String contentJson = contentResponse.toString();
+                                    int extractStart = contentJson.indexOf("\"extract\":\"");
+                                    if (extractStart != -1) {
+                                        extractStart += 11; // Length of "\"extract\":\""
+                                        int extractEnd = contentJson.indexOf("\"", extractStart);
+                                        if (extractEnd != -1) {
+                                            String extract = contentJson.substring(extractStart, extractEnd);
+                                            // Unescape JSON string
+                                            extract = extract.replace("\\\\", "\\").replace("\\\"", "\"").replace("\\n", " ").replace("\\t", " ");
+                                            
+                                            // Clean up HTML entities and limit length
+                                            String cleaned = Jsoup.parse(extract).text();
+                                            if (cleaned.length() > config.getWikipedia().getMaxChars()) {
+                                                cleaned = cleaned.substring(0, config.getWikipedia().getMaxChars());
+                                            }
+                                            
+                                            log.info("Found ZIM article for: {}", query);
+                                            return Optional.of(leaned);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.debug("Kiwix API search failed: {}", e.getMessage());
+        }
+        return Optional.empty();
+    }
                     
                     // Parse JSON response to extract page ID
                     String jsonResponse = response.toString();

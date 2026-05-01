@@ -40,6 +40,8 @@ public class AppConfig {
     public static class Model {
         private String simpleModel = "gemma:1b";
         private String complexModel = "phi3.5:mini";
+        private String simpleModelPath = "";
+        private String complexModelPath = "";
         private int idleTimeoutMinutes = 5;
         private int maxRamPercent = 85;
 
@@ -47,10 +49,40 @@ public class AppConfig {
         public void setSimpleModel(String simpleModel) { this.simpleModel = simpleModel; }
         public String getComplexModel() { return complexModel; }
         public void setComplexModel(String complexModel) { this.complexModel = complexModel; }
+        public String getSimpleModelPath() { return simpleModelPath; }
+        public void setSimpleModelPath(String simpleModelPath) { this.simpleModelPath = simpleModelPath; }
+        public String getComplexModelPath() { return complexModelPath; }
+        public void setComplexModelPath(String complexModelPath) { this.complexModelPath = complexModelPath; }
         public int getIdleTimeoutMinutes() { return idleTimeoutMinutes; }
         public void setIdleTimeoutMinutes(int idleTimeoutMinutes) { this.idleTimeoutMinutes = idleTimeoutMinutes; }
         public int getMaxRamPercent() { return maxRamPercent; }
         public void setMaxRamPercent(int maxRamPercent) { this.maxRamPercent = maxRamPercent; }
+    }
+
+    private String inferenceBackend = "ollama";
+
+    public String getInferenceBackend() { return inferenceBackend; }
+    public void setInferenceBackend(String inferenceBackend) { this.inferenceBackend = inferenceBackend; }
+
+    private LlamaCpp llamaCpp = new LlamaCpp();
+
+    public LlamaCpp getLlamaCpp() { return llamaCpp; }
+    public void setLlamaCpp(LlamaCpp llamaCpp) { this.llamaCpp = llamaCpp; }
+
+    public static class LlamaCpp {
+        private String path = "";
+        private int ctxSize = 512;
+        private int batchSize = 512;
+        private int threads = 4;
+
+        public String getPath() { return path; }
+        public void setPath(String path) { this.path = path; }
+        public int getCtxSize() { return ctxSize; }
+        public void setCtxSize(int ctxSize) { this.ctxSize = ctxSize; }
+        public int getBatchSize() { return batchSize; }
+        public void setBatchSize(int batchSize) { this.batchSize = batchSize; }
+        public int getThreads() { return threads; }
+        public void setThreads(int threads) { this.threads = threads; }
     }
 
     public static class Ollama {

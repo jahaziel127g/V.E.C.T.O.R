@@ -12,6 +12,7 @@ import com.nexuslabs.vector.prompt.PromptBuilder;
 import com.nexuslabs.vector.model.ModelRouter;
 import com.nexuslabs.vector.model.ModelManager;
 import com.nexuslabs.vector.inference.OllamaClient;
+import com.nexuslabs.vector.inference.LlamaCppClient;
 import com.nexuslabs.vector.response.ResponseProcessor;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -35,6 +36,7 @@ public class AskController {
     private final ModelRouter modelRouter;
     private final ModelManager modelManager;
     private final OllamaClient ollamaClient;
+    private final LlamaCppClient llamaCppClient;
     private final ResponseProcessor responseProcessor;
     private final AppConfig config;
 
@@ -48,6 +50,7 @@ public class AskController {
                          ModelRouter modelRouter,
                          ModelManager modelManager,
                          OllamaClient ollamaClient,
+                         LlamaCppClient llamaCppClient,
                          ResponseProcessor responseProcessor,
                          AppConfig config) {
         this.sanitizer = sanitizer;
@@ -60,6 +63,7 @@ public class AskController {
         this.modelRouter = modelRouter;
         this.modelManager = modelManager;
         this.ollamaClient = ollamaClient;
+        this.llamaCppClient = llamaCppClient;
         this.responseProcessor = responseProcessor;
         this.config = config;
     }
@@ -109,11 +113,32 @@ public class AskController {
         }
 
         String modelName = modelRouter.getModelForComplexity(complexity);
-        modelManager.ensureModelLoaded(modelName);
-
-        String prompt = promptBuilder.build(sanitizedQuestion, complexity, wikiContext);
-
-        String rawResponse = ollamaClient.generate(prompt, modelName);
+        
+        // Use appropriate inference backend based on configuration
+        String rawResponse;
+        try {
+            if ("llama.cpp".equals(config.getInferenceBackend())) {
+                modelManager.ensureModelLoaded(modelName); // Still used for tracking
+                rawResponse = llamaCppClient.generateResponse(promptBuilder.build(sanitizedQuestion, complexity, wikiContext), complexity == QueryComplexity.COMPLEX);
+            } else {
+                modelManager.ensureModelLoaded(modelName);
+                String prompt = promptBuilder.build(sanitizedQuestion, complexity, wikiContext);
+                rawResponse = ollamaClient.generate(prompt, modelName);
+            }
+        } catch (Exception e) {
+            // Fallback to Ollama if llama.cpp fails
+            if ("llama.cpp".equals(config.getInferenceBackend())) {
+                try {
+                    modelManager.ensureModelLoaded(modelName);
+                    String prompt = promptBuilder.build(sanitizedQuestion, complexity, wikiContext);
+                    rawResponse = ollamaClient.generate(prompt, modelName);
+                } catch (Exception ex) {
+                    rawResponse = "I apologize, but I'm unable to process your request at the moment. Please try again later.";
+                }
+            } else {
+                rawResponse = "I apologize, but I'm unable to process your request at the moment. Please try again later.";
+            }
+        }
         String processedAnswer = responseProcessor.process(rawResponse);
 
         answerCache.put(cacheKey, processedAnswer);

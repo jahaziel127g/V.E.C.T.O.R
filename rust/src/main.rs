@@ -7,6 +7,7 @@ use std::time::{Duration, SystemTime};
 use std::process::Command;
 use std::collections::HashMap;
 use std::sync::Mutex;
+use futures::StreamExt;
 
 // Request/Response structs
 #[derive(Deserialize)]
@@ -269,6 +270,58 @@ async fn ask(web::Json(req): web::Json<AskRequest>, state: web::Data<AppState>) 
     })
 }
 
+async fn ask_stream(web::Json(req): web::Json<AskRequest>, state: web::Data<AppState>) -> impl Responder {
+    let prompt = format!("Question: {}\nAnswer:", req.question);
+
+    let client = Client::new();
+    let ollama_req = serde_json::json!({
+        "model": state.config.model,
+        "prompt": prompt,
+        "stream": true
+    });
+
+    let response = match client
+        .post(format!("{}/api/generate", state.config.ollama_url))
+        .json(&ollama_req)
+        .timeout(state.config.ollama_timeout)
+        .send()
+        .await
+    {
+        Ok(resp) => resp,
+        Err(e) => {
+            return HttpResponse::InternalServerError().json(serde_json::json!({
+                "error": format!("Ollama request failed: {}", e)
+            }));
+        }
+    };
+
+    let stream = response.bytes_stream().map(|chunk| {
+        match chunk {
+            Ok(bytes) => {
+                let line = String::from_utf8_lossy(&bytes);
+                let mut output = String::new();
+                for l in line.lines() {
+                    if let Ok(json) = serde_json::from_str::<Value>(l) {
+                        if let Some(token) = json.get("response").and_then(|v| v.as_str()) {
+                            output.push_str(&format!("data: {}\n\n", token));
+                        }
+                        if json.get("done").and_then(|v| v.as_bool()).unwrap_or(false) {
+                            output.push_str("data: [DONE]\n\n");
+                        }
+                    }
+                }
+                Ok(actix_web::web::Bytes::copy_from_slice(output.as_bytes()))
+            }
+            Err(e) => Err(actix_web::error::ErrorInternalServerError(e)),
+        }
+    });
+
+    HttpResponse::Ok()
+        .content_type("text/event-stream")
+        .append_header(("Cache-Control", "no-cache"))
+        .streaming(stream)
+}
+
 async fn health() -> impl Responder {
     HttpResponse::Ok().json(serde_json::json!({
         "status": "healthy",
@@ -324,6 +377,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(state.clone())
             .wrap(cors)
             .route("/api/ask", web::post().to(ask))
+            .route("/api/ask/stream", web::post().to(ask_stream))
             .route("/api/health", web::get().to(health))
             .route("/api/stats", web::get().to(stats))
     })

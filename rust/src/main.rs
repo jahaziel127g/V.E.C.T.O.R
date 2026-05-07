@@ -124,36 +124,6 @@ fn search_wikipedia(query: &str, zim_path: &str) -> Option<String> {
     }
 }
 
-// Preload model so first request is fast
-fn preload_model(config: &Config) {
-    println!("Preloading model: {}...", config.model);
-    let client = reqwest::blocking::Client::new();
-    let warmup_req = serde_json::json!({
-        "model": config.model,
-        "prompt": "hi",
-        "stream": false,
-        "options": { "num_predict": 10 }
-    });
-    
-    match client
-        .post(format!("{}/api/generate", config.ollama_url))
-        .json(&warmup_req)
-        .timeout(config.ollama_timeout)
-        .send()
-    {
-        Ok(resp) => {
-            if resp.status().is_success() {
-                println!("Model preloaded successfully!");
-            } else {
-                println!("Preload warning: Ollama returned status {}", resp.status());
-            }
-        },
-        Err(e) => {
-            println!("Preload failed (is Ollama running?): {}", e);
-        }
-    }
-}
-
 async fn ask(web::Json(req): web::Json<AskRequest>, state: web::Data<AppState>) -> impl Responder {
     // Increment request count
     {
@@ -353,10 +323,6 @@ async fn main() -> std::io::Result<()> {
         wiki_cache: Mutex::new(HashMap::new()),
         request_count: Mutex::new(0),
     });
-    
-    // Preload model (synchronous)
-    let config = state.config.clone();
-    preload_model(&config);
     
     println!("V.E.C.T.O.R Rust starting on http://localhost:8080");
     

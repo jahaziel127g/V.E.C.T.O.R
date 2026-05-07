@@ -9,10 +9,7 @@ import org.springframework.stereotype.Component;
 
 import java.io.BufferedReader;
 import java.io.File;
-import java.io.IOException;
 import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
@@ -24,83 +21,10 @@ public class WikipediaService {
 
     private final WikiCache wikiCache;
     private final AppConfig config;
-    private volatile boolean kiwixStarted = false;
 
     public WikipediaService(WikiCache wikiCache, AppConfig config) {
         this.wikiCache = wikiCache;
         this.config = config;
-    }
-
-    private boolean isKiwixRunning() {
-        try {
-            int kiwixPort = config.getKiwix().getPort();
-            URL url = new URL("http://localhost:" + kiwixPort);
-            HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-            connection.setConnectTimeout(1500); // 1.5 seconds
-            connection.setRequestMethod("HEAD");
-            int responseCode = connection.getResponseCode();
-            return (responseCode == HttpURLConnection.HTTP_OK);
-        } catch (IOException e) {
-            return false;
-        }
-    }
-
-    private void startKiwixServer() {
-        if (kiwixStarted) {
-            return; // Already started
-        }
-        String zimPath = config.getKiwix().getZimPath();
-        File zimFile = new File(zimPath);
-        if (!zimFile.exists()) {
-            log.warn("Cannot start Kiwix: ZIM file not found at {}", zimPath);
-            return;
-        }
-        int kiwixPort = config.getKiwix().getPort();
-        try {
-            ProcessBuilder pb = new ProcessBuilder("kiwix-serve", "--port=" + kiwixPort, zimPath);
-            pb.redirectErrorStream(true);
-            Process process = pb.start();
-            // Consume output to avoid blocking (we don't need to log it)
-            new Thread(() -> {
-                try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-                    String line;
-                    while ((line = reader.readLine()) != null) {
-                        // Optionally log at debug level if needed
-                        // log.debug("Kiwix output: {}", line);
-                    }
-                } catch (IOException e) {
-                    log.debug("Error reading Kiwix output: {}", e.getMessage());
-                }
-            }).start();
-            kiwixStarted = true;
-            log.info("Kiwix server started on port {} for ZIM: {}", kiwixPort, zimPath);
-        } catch (IOException e) {
-            log.warn("Failed to start Kiwix server: {}", e.getMessage());
-        }
-    }
-
-    private void ensureKiwixRunning() {
-        if (isKiwixRunning()) {
-            kiwixStarted = true;
-            return;
-        }
-        if (!kiwixStarted) {
-            startKiwixServer();
-            // Wait up to 10 seconds for Kiwix to be ready
-            for (int i = 0; i < 10; i++) {
-                try {
-                    Thread.sleep(1000);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    break;
-                }
-                if (isKiwixRunning()) {
-                    log.info("Kiwix server is now running");
-                    return;
-                }
-            }
-            log.warn("Kiwix server did not start within 10 seconds");
-        }
     }
 
     public Optional<String> getContextForQuery(String query) {
@@ -115,187 +39,129 @@ public class WikipediaService {
             return Optional.of(cached);
         }
 
-        // Ensure Kiwix server is running for API access
-        ensureKiwixRunning();
+        String zimPath = config.getKiwix().getZimPath();
+        File zimFile = new File(zimPath);
 
-        // Try to get context from Kiwix HTTP API
-        Optional<String> apiResult = searchWithKiwixApi(query);
-        if (apiResult.isPresent()) {
-            wikiCache.put(cacheKey, apiResult.get());
-            return apiResult;
-        }
-
-        // Fallback to direct ZIM file search
-        File zimFile = new File(config.getKiwix().getZimPath());
         if (!zimFile.exists()) {
-            log.warn("ZIM file not found: {}", zimFile.getPath());
+            log.warn("ZIM file not found: {}", zimPath);
             return Optional.empty();
         }
 
-        Optional<String> result = searchZim(query, zimFile.getPath());
+        Optional<String> result = searchZim(query, zimPath);
         result.ifPresent(r -> wikiCache.put(cacheKey, r));
         return result;
-    }
-
-    private Optional<String> searchWithKiwixApi(String query) {
-        try {
-            int kiwixPort = config.getKiwix().getPort();
-            // Use the Kiwix HTTP API to search
-            String apiUrl = "http://localhost:" + kiwixPort + "/api?action=query&list=search&srsearch=" + 
-                               java.net.URLEncoder.encode(query, StandardCharsets.UTF_8) +
-                               "&format=json&srlimit=1";
-            URL url = new URL(apiUrl);
-            HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-            connection.setConnectTimeout(3000); // 3 seconds
-            connection.setRequestMethod("GET");
-            
-            int responseCode = connection.getResponseCode();
-            if (responseCode == HttpURLConnection.HTTP_OK) {
-                try (BufferedReader reader = new BufferedReader(
-                            new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8))) {
-                    StringBuilder response = new StringBuilder();
-                    String line;
-                    while ((line = reader.readLine()) != null) {
-                        response.append(line);
-                    }
-                    
-                    // Parse JSON response to extract page ID
-                    String jsonResponse = response.toString();
-                    int pageIdStart = jsonResponse.indexOf("\"pageid\":");
-                    if (pageIdStart != -1) {
-                        pageIdStart += 9; // Length of "\"pageid\":"
-                        int pageIdEnd = jsonResponse.indexOf(",", pageIdStart);
-                        if (pageIdEnd == -1) {
-                            pageIdEnd = jsonResponse.indexOf("}", pageIdStart);
-                        }
-                        if (pageIdEnd != -1) {
-                            String pageIdStr = jsonResponse.substring(pageIdStart, pageIdEnd).trim();
-                            int pageId = Integer.parseInt(pageIdStr);
-                            
-                            // Get the content of the page
-                            String contentUrl = "http://localhost:" + kiwixPort + 
-                                                   "/api?action=query&prop=extracts&exintro&explaintext&pageids=" + 
-                                                   pageId + "&format=json";
-                            URL contentUrlObj = new URL(contentUrl);
-                            HttpURLConnection contentConnection = (HttpURLConnection) contentUrlObj.openConnection();
-                            contentConnection.setConnectTimeout(3000);
-                            contentConnection.setRequestMethod("GET");
-                            
-                            if (contentConnection.getResponseCode() == HttpURLConnection.HTTP_OK) {
-                                try (BufferedReader contentReader = new BufferedReader(
-                                            new InputStreamReader(contentConnection.getInputStream(), StandardCharsets.UTF_8))) {
-                                    StringBuilder contentResponse = new StringBuilder();
-                                    String contentLine;
-                                    while ((contentLine = contentReader.readLine()) != null) {
-                                        contentResponse.append(contentLine);
-                                    }
-                                    
-                                    String contentJson = contentResponse.toString();
-                                    int extractStart = contentJson.indexOf("\"extract\":\"");
-                                    if (extractStart != -1) {
-                                        extractStart += 11; // Length of "\"extract\":\""
-                                        int extractEnd = contentJson.indexOf("\"", extractStart);
-                                        if (extractEnd != -1) {
-                                            String extract = contentJson.substring(extractStart, extractEnd);
-                                            // Unescape JSON string
-                                            extract = extract.replace("\\\\", "\\").replace("\\\"", "\"").replace("\\n", " ").replace("\\t", " ");
-                                            
-                                            // Clean up HTML entities and limit length
-                                            String cleaned = Jsoup.parse(extract).text();
-                                            if (cleaned.length() > config.getWikipedia().getMaxChars()) {
-                                                cleaned = cleaned.substring(0, config.getWikipedia().getMaxChars());
-                                            }
-                                            
-                                            log.info("Found ZIM article for: {}", query);
-                                            return Optional.of(cleaned);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        } catch (Exception e) {
-            log.debug("Kiwix API search failed: {}", e.getMessage());
-        }
-        return Optional.empty();
     }
 
     private Optional<String> searchZim(String query, String zimPath) {
         log.info("Searching ZIM for: {}", query);
 
         try {
-            ProcessBuilder pb = new ProcessBuilder(
-                "zimsearch", zimPath, query
-            );
-            pb.redirectErrorStream(true);
-            Process p = pb.start();
+            ProcessBuilder searchPb = new ProcessBuilder("zimsearch", zimPath, query);
+            searchPb.redirectErrorStream(true);
+            Process searchProcess = searchPb.start();
 
-            StringBuilder output = new StringBuilder();
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
+            StringBuilder searchOutput = new StringBuilder();
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(searchProcess.getInputStream()))) {
                 String line;
-                int lineCount = 0;
-                while ((line = reader.readLine()) != null && lineCount < 5) {
-                    output.append(line).append("\n");
-                    lineCount++;
+                while ((line = reader.readLine()) != null) {
+                    searchOutput.append(line).append("\n");
                 }
             }
 
-            if (!p.waitFor(10, java.util.concurrent.TimeUnit.SECONDS)) {
-                p.destroy();
+            if (!searchProcess.waitFor(10, TimeUnit.SECONDS)) {
+                searchProcess.destroy();
+                log.warn("zimsearch timed out");
                 return Optional.empty();
             }
 
-            String result = extractArticleContent(zimPath, query);
-            if (result != null && result.length() > 50) {
-                log.info("Found ZIM article for: {}", query);
-                return Optional.of(result);
+            String output = searchOutput.toString();
+            if (output.isBlank()) {
+                log.debug("No search results for: {}", query);
+                return Optional.empty();
             }
+
+            String articlePath = extractFirstArticlePath(output);
+            if (articlePath == null) {
+                log.debug("No article path found");
+                return Optional.empty();
+            }
+
+            return extractArticleContent(zimPath, articlePath, query);
 
         } catch (Exception e) {
             log.warn("ZIM search error: {}", e.getMessage());
+            return Optional.empty();
         }
-
-        return Optional.empty();
     }
 
-    private String extractArticleContent(String zimPath, String query) {
+    private String extractFirstArticlePath(String searchOutput) {
+        String[] lines = searchOutput.split("\n");
+        for (String line : lines) {
+            line = line.trim();
+            if (line.startsWith("article:")) {
+                String path = line.substring(8).trim();
+                if (!path.isEmpty()) {
+                    return path;
+                }
+            }
+        }
+        return null;
+    }
+
+    private Optional<String> extractArticleContent(String zimPath, String articlePath, String query) {
         try {
-            ProcessBuilder pb = new ProcessBuilder(
-                "zimdump", zimPath, "-q", query.replace(" ", "_")
-            );
-            pb.redirectErrorStream(true);
-            Process p = pb.start();
+            String[] parts = articlePath.split("/");
+            String articleName = parts[parts.length - 1];
+
+            ProcessBuilder dumpPb = new ProcessBuilder("zimdump", zimPath, articleName);
+            dumpPb.redirectErrorStream(true);
+            Process dumpProcess = dumpPb.start();
 
             StringBuilder content = new StringBuilder();
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(dumpProcess.getInputStream()))) {
                 String line;
+                boolean foundContent = false;
                 while ((line = reader.readLine()) != null) {
-                    String cleaned = Jsoup.parse(line).text();
-                    if (cleaned.length() > 20) {
-                        content.append(cleaned).append(" ");
+                    if (line.startsWith("Content")) {
+                        foundContent = true;
+                        continue;
+                    }
+                    if (foundContent && line.length() > 20) {
+                        content.append(line).append("\n");
                     }
                 }
             }
 
-            p.waitFor(10, java.util.concurrent.TimeUnit.SECONDS);
+            if (!dumpProcess.waitFor(15, TimeUnit.SECONDS)) {
+                dumpProcess.destroy();
+                return Optional.empty();
+            }
 
-            String result = content.toString().trim();
-            int max = config.getWikipedia().getMaxChars();
-            if (result.length() > max) {
-                result = result.substring(0, max);
-                int lastPeriod = result.lastIndexOf('.');
-                if (lastPeriod > max / 2) {
-                    result = result.substring(0, lastPeriod + 1);
+            String rawContent = content.toString().trim();
+            if (rawContent.isEmpty()) {
+                return Optional.empty();
+            }
+
+            String cleaned = Jsoup.parse(rawContent).text();
+            int maxChars = config.getWikipedia().getMaxChars();
+            if (cleaned.length() > maxChars) {
+                cleaned = cleaned.substring(0, maxChars);
+                int lastPeriod = cleaned.lastIndexOf('.');
+                if (lastPeriod > maxChars / 2) {
+                    cleaned = cleaned.substring(0, lastPeriod + 1);
                 }
             }
-            return result;
+
+            if (cleaned.length() > 50) {
+                log.info("Found ZIM article for: {}", query);
+                return Optional.of(cleaned);
+            }
 
         } catch (Exception e) {
-            log.debug("ZIM dump error: {}", e.getMessage());
-            return null;
+            log.debug("ZIM extract error: {}", e.getMessage());
         }
+
+        return Optional.empty();
     }
 
     public boolean hasZimFile() {

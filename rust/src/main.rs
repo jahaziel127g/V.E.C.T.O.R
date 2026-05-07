@@ -28,6 +28,7 @@ struct AppState {
     config: Config,
     answer_cache: Mutex<HashMap<String, String>>,
     wiki_cache: Mutex<HashMap<String, String>>,
+    request_count: Mutex<u64>,
 }
 
 // Configuration
@@ -41,10 +42,14 @@ struct Config {
 impl Default for Config {
     fn default() -> Self {
         Config {
-            ollama_url: "http://localhost:11434".to_string(),
-            ollama_timeout: Duration::from_secs(60),
-            model: "gemma3:1b-it-qat".to_string(),
-            zim_path: "/home/jahazielo/Downloads/wikipedia_en_simple_all_nopic_2026-02.zim".to_string(),
+            ollama_url: std::env::var("OLLAMA_URL").unwrap_or_else(|_| "http://localhost:11434".to_string()),
+            ollama_timeout: Duration::from_secs(
+                std::env::var("OLLAMA_TIMEOUT").ok().and_then(|v| v.parse().ok()).unwrap_or(60)
+            ),
+            model: std::env::var("MODEL").unwrap_or_else(|_| "gemma3:1b-it-qat".to_string()),
+            zim_path: std::env::var("ZIM_PATH").unwrap_or_else(|_| 
+                "/home/jahazielo/Downloads/wikipedia_en_simple_all_nopic_2026-02.zim".to_string()
+            ),
         }
     }
 }
@@ -118,6 +123,12 @@ fn search_wikipedia(query: &str, zim_path: &str) -> Option<String> {
 }
 
 async fn ask(web::Json(req): web::Json<AskRequest>, state: web::Data<AppState>) -> impl Responder {
+    // Increment request count
+    {
+        let mut count = state.request_count.lock().unwrap();
+        *count += 1;
+    }
+    
     let start_time = SystemTime::now();
     let query_lower = req.question.to_lowercase();
     
@@ -234,6 +245,20 @@ async fn health() -> impl Responder {
     }))
 }
 
+async fn stats(state: web::Data<AppState>) -> impl Responder {
+    let answer_count = state.answer_cache.lock().unwrap().len();
+    let wiki_count = state.wiki_cache.lock().unwrap().len();
+    let req_count = *state.request_count.lock().unwrap();
+    
+    HttpResponse::Ok().json(serde_json::json!({
+        "total_requests": req_count,
+        "answer_cache_size": answer_count,
+        "wiki_cache_size": wiki_count,
+        "model": state.config.model,
+        "status": "operational"
+    }))
+}
+
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     env_logger::init();
@@ -242,6 +267,7 @@ async fn main() -> std::io::Result<()> {
         config: Config::default(),
         answer_cache: Mutex::new(HashMap::new()),
         wiki_cache: Mutex::new(HashMap::new()),
+        request_count: Mutex::new(0),
     });
     
     println!("V.E.C.T.O.R Rust starting on http://localhost:8080");
@@ -257,6 +283,7 @@ async fn main() -> std::io::Result<()> {
             .wrap(cors)
             .route("/api/ask", web::post().to(ask))
             .route("/api/health", web::get().to(health))
+            .route("/api/stats", web::get().to(stats))
     })
     .bind("localhost:8080")?
     .run()

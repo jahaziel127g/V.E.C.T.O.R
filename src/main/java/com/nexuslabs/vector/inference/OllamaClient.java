@@ -49,7 +49,8 @@ public class OllamaClient {
             ObjectNode options = objectMapper.createObjectNode();
             options.put("temperature", 0.7);
             options.put("top_p", 0.9);
-            options.put("num_predict", 200); // Reduced for faster response
+            options.put("num_predict", 150); // Reduced for faster response
+            options.put("num_ctx", 256); // Small context for speed
             requestBody.set("options", options);
             
             HttpRequest request = HttpRequest.newBuilder()

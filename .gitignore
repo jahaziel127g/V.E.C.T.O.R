@@ -6,4 +6,10 @@ target/
 .idea/
 *.iml
 .DS_Store
-.vscode/
+.vscode/llama.cpp
+
+llama.cpp/
+models/
+dist/
+*.log
+*.jar

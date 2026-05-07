@@ -74,24 +74,26 @@ public class AskController {
                                   @RequestHeader(value = "X-Forwarded-For", required = false, defaultValue = "unknown") String forwardedIp) {
         
         long startTime = System.currentTimeMillis();
-
+        
         String clientIp = request.getIpAddress() != null ? request.getIpAddress() : forwardedIp;
         String identifier = userId != null ? userId : clientIp;
-
+        
         if (!rateLimiter.isAllowed(identifier)) {
             return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
                     .body(Map.of("error", "Rate limit exceeded. Please try again later."));
         }
-
+        
         String sanitizedQuestion = sanitizer.sanitize(request.getQuestion());
         if (sanitizedQuestion == null || sanitizedQuestion.isBlank()) {
             return ResponseEntity.badRequest()
                     .body(Map.of("error", "Invalid question after sanitization"));
         }
-
-        QueryComplexity complexity = classifier.classify(sanitizedQuestion);
+        
+        // Skip classifier - use SIMPLE always (one model strategy)
+        QueryComplexity complexity = QueryComplexity.SIMPLE;
         String cacheKey = sanitizedQuestion.toLowerCase().trim();
         
+        // Quick cache check first (fastest path)
         String cachedAnswer = answerCache.get(cacheKey);
         if (cachedAnswer != null) {
             AskResponse response = new AskResponse(
@@ -103,46 +105,36 @@ public class AskController {
             response.setProcessingTimeMs(System.currentTimeMillis() - startTime);
             return ResponseEntity.ok(response);
         }
-
+        
+        // Skip Wikipedia for short queries (speed optimization)
         String wikiContext = null;
-        if (config.getWikipedia().isEnabled()) {
+        if (config.getWikipedia().isEnabled() && sanitizedQuestion.length() > 20) {
             Optional<String> wikiOpt = wikipediaService.getContextForQuery(sanitizedQuestion);
             if (wikiOpt.isPresent()) {
                 wikiContext = contextOptimizer.optimize(wikiOpt.get());
             }
         }
-
-        String modelName = modelRouter.getModelForComplexity(complexity);
+        
+        String modelName = config.getModel().getSimpleModel(); // Direct model access
         
         // Use appropriate inference backend based on configuration
         String rawResponse;
         try {
             if ("llama.cpp".equals(config.getInferenceBackend())) {
-                modelManager.ensureModelLoaded(modelName); // Still used for tracking
-                rawResponse = llamaCppClient.generateResponse(promptBuilder.build(sanitizedQuestion, complexity, wikiContext), complexity == QueryComplexity.COMPLEX);
+                modelManager.ensureModelLoaded(modelName);
+                rawResponse = llamaCppClient.generateResponse(promptBuilder.build(sanitizedQuestion, complexity, wikiContext), false);
             } else {
                 modelManager.ensureModelLoaded(modelName);
                 String prompt = promptBuilder.build(sanitizedQuestion, complexity, wikiContext);
                 rawResponse = ollamaClient.generate(prompt, modelName);
             }
         } catch (Exception e) {
-            // Fallback to Ollama if llama.cpp fails
-            if ("llama.cpp".equals(config.getInferenceBackend())) {
-                try {
-                    modelManager.ensureModelLoaded(modelName);
-                    String prompt = promptBuilder.build(sanitizedQuestion, complexity, wikiContext);
-                    rawResponse = ollamaClient.generate(prompt, modelName);
-                } catch (Exception ex) {
-                    rawResponse = "I apologize, but I'm unable to process your request at the moment. Please try again later.";
-                }
-            } else {
-                rawResponse = "I apologize, but I'm unable to process your request at the moment. Please try again later.";
-            }
+            rawResponse = "I apologize, but I'm unable to process your request at the moment. Please try again later.";
         }
         String processedAnswer = responseProcessor.process(rawResponse);
-
+        
         answerCache.put(cacheKey, processedAnswer);
-
+        
         AskResponse response = new AskResponse(
             processedAnswer,
             modelName,
@@ -150,7 +142,7 @@ public class AskController {
             complexity.name().toLowerCase()
         );
         response.setProcessingTimeMs(System.currentTimeMillis() - startTime);
-
+        
         return ResponseEntity.ok(response);
     }
 

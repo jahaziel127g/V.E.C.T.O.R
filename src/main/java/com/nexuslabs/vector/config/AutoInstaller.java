@@ -178,6 +178,18 @@ public class AutoInstaller implements ApplicationListener<ApplicationReadyEvent>
         pullModelIfNeeded(simpleModel, "Simple");
         pullModelIfNeeded(complexModel, "Complex");
         
+        // Preload simple model for instant first response
+        log.info("Preloading simple model for fast startup...");
+        try {
+            ProcessBuilder pb = new ProcessBuilder("ollama", "run", extractModelShortName(simpleModel), "hi");
+            pb.redirectErrorStream(true);
+            Process p = pb.start();
+            p.waitFor(60, TimeUnit.SECONDS);
+            log.info("Simple model preloaded successfully");
+        } catch (Exception e) {
+            log.debug("Model preload note: {}", e.getMessage());
+        }
+        
         state = InstallState.READY;
         log.info("=== V.E.C.T.O.R Initialization Complete ===");
     }

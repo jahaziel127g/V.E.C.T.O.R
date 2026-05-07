@@ -5,7 +5,7 @@ use serde_json::Value;
 use reqwest::Client;
 use std::time::{Duration, SystemTime};
 use std::process::Command;
-use std::sync::RwLock;
+use parking_lot::RwLock;
 use std::collections::HashMap;
 use futures::StreamExt;
 
@@ -131,7 +131,7 @@ fn search_wikipedia(query: &str, zim_path: &str) -> Option<String> {
 async fn ask(web::Json(req): web::Json<AskRequest>, state: web::Data<AppState>) -> impl Responder {
     // Increment request count
     {
-        let mut count = state.request_count.write().unwrap();
+        let mut count = state.request_count.write();
         *count += 1;
     }
     
@@ -140,7 +140,7 @@ async fn ask(web::Json(req): web::Json<AskRequest>, state: web::Data<AppState>) 
     
     // Check answer cache first
     {
-        let cache = state.answer_cache.read().unwrap();
+        let cache = state.answer_cache.read();
         if let Some(cached) = cache.get(&query_lower) {
             let duration = start_time.elapsed().unwrap_or_default();
             return HttpResponse::Ok().json(AskResponse {
@@ -155,7 +155,7 @@ async fn ask(web::Json(req): web::Json<AskRequest>, state: web::Data<AppState>) 
     
     // Check Wikipedia cache
     {
-        let cache = state.wiki_cache.read().unwrap();
+        let cache = state.wiki_cache.read();
         if let Some(cached) = cache.get(&query_lower) {
             let duration = start_time.elapsed().unwrap_or_default();
             return HttpResponse::Ok().json(AskResponse {
@@ -218,12 +218,12 @@ async fn ask(web::Json(req): web::Json<AskRequest>, state: web::Data<AppState>) 
     
     // Store in cache
     {
-        let mut cache = state.answer_cache.write().unwrap();
+        let mut cache = state.answer_cache.write();
         cache.insert(query_lower.clone(), answer.clone());
     }
     
     if let Some(ref ctx) = wiki_context {
-        let mut cache = state.wiki_cache.write().unwrap();
+        let mut cache = state.wiki_cache.write();
         cache.insert(query_lower, ctx.clone());
     }
     
@@ -303,9 +303,9 @@ async fn health() -> impl Responder {
 }
 
 async fn stats(state: web::Data<AppState>) -> impl Responder {
-    let answer_count = state.answer_cache.read().unwrap().len();
-    let wiki_count = state.wiki_cache.read().unwrap().len();
-    let req_count = *state.request_count.read().unwrap();
+    let answer_count = state.answer_cache.read().len();
+    let wiki_count = state.wiki_cache.read().len();
+    let req_count = *state.request_count.read();
     
     HttpResponse::Ok().json(serde_json::json!({
         "total_requests": req_count,

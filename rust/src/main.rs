@@ -32,6 +32,7 @@ struct AppState {
 }
 
 // Configuration
+#[derive(Clone)]
 struct Config {
     ollama_url: String,
     ollama_timeout: Duration,
@@ -118,6 +119,36 @@ fn search_wikipedia(query: &str, zim_path: &str) -> Option<String> {
             Some(truncated)
         } else {
             Some(article_content)
+        }
+    }
+}
+
+// Preload model so first request is fast
+fn preload_model(config: &Config) {
+    println!("Preloading model: {}...", config.model);
+    let client = reqwest::blocking::Client::new();
+    let warmup_req = serde_json::json!({
+        "model": config.model,
+        "prompt": "hi",
+        "stream": false,
+        "options": { "num_predict": 10 }
+    });
+    
+    match client
+        .post(format!("{}/api/generate", config.ollama_url))
+        .json(&warmup_req)
+        .timeout(config.ollama_timeout)
+        .send()
+    {
+        Ok(resp) => {
+            if resp.status().is_success() {
+                println!("Model preloaded successfully!");
+            } else {
+                println!("Preload warning: Ollama returned status {}", resp.status());
+            }
+        },
+        Err(e) => {
+            println!("Preload failed (is Ollama running?): {}", e);
         }
     }
 }
@@ -270,7 +301,18 @@ async fn main() -> std::io::Result<()> {
         request_count: Mutex::new(0),
     });
     
+    // Preload model (synchronous)
+    let config = state.config.clone();
+    preload_model(&config);
+    
     println!("V.E.C.T.O.R Rust starting on http://localhost:8080");
+    
+    // Graceful shutdown on Ctrl+C
+    tokio::spawn(async {
+        tokio::signal::ctrl_c().await.expect("Failed to listen for Ctrl+C");
+        println!("\nStopping V.E.C.T.O.R...");
+        std::process::exit(0);
+    });
     
     HttpServer::new(move || {
         let cors = Cors::default()

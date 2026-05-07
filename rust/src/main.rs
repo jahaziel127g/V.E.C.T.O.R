@@ -5,9 +5,11 @@ use serde_json::Value;
 use reqwest::Client;
 use std::time::{Duration, SystemTime};
 use std::process::Command;
-use std::sync::Mutex;
+use std::sync::RwLock;
 use std::collections::HashMap;
 use futures::StreamExt;
+
+
 
 // Request/Response structs
 #[derive(Deserialize)]
@@ -28,15 +30,15 @@ struct AskResponse {
 struct AppState {
     config: Config,
     client: Client,
-    answer_cache: Mutex<HashMap<String, String>>,
-    wiki_cache: Mutex<HashMap<String, String>>,
-    request_count: Mutex<u64>,
+    answer_cache: RwLock<HashMap<String, String>>,
+    wiki_cache: RwLock<HashMap<String, String>>,
+    request_count: RwLock<u64>,
 }
 
 // Configuration
 #[derive(Clone)]
 struct Config {
-    ollama_url: String,
+    ollama_url_full: String,
     ollama_timeout: Duration,
     model: String,
     zim_path: String,
@@ -44,8 +46,9 @@ struct Config {
 
 impl Default for Config {
     fn default() -> Self {
+        let ollama_url = std::env::var("OLLAMA_URL").unwrap_or_else(|_| "http://localhost:11434".to_string());
         Config {
-            ollama_url: std::env::var("OLLAMA_URL").unwrap_or_else(|_| "http://localhost:11434".to_string()),
+            ollama_url_full: format!("{}/api/generate", ollama_url),
             ollama_timeout: Duration::from_secs(
                 std::env::var("OLLAMA_TIMEOUT").ok().and_then(|v| v.parse().ok()).unwrap_or(60)
             ),
@@ -128,7 +131,7 @@ fn search_wikipedia(query: &str, zim_path: &str) -> Option<String> {
 async fn ask(web::Json(req): web::Json<AskRequest>, state: web::Data<AppState>) -> impl Responder {
     // Increment request count
     {
-        let mut count = state.request_count.lock().unwrap();
+        let mut count = state.request_count.write().unwrap();
         *count += 1;
     }
     
@@ -137,7 +140,7 @@ async fn ask(web::Json(req): web::Json<AskRequest>, state: web::Data<AppState>) 
     
     // Check answer cache first
     {
-        let cache = state.answer_cache.lock().unwrap();
+        let cache = state.answer_cache.read().unwrap();
         if let Some(cached) = cache.get(&query_lower) {
             let duration = start_time.elapsed().unwrap_or_default();
             return HttpResponse::Ok().json(AskResponse {
@@ -152,7 +155,7 @@ async fn ask(web::Json(req): web::Json<AskRequest>, state: web::Data<AppState>) 
     
     // Check Wikipedia cache
     {
-        let cache = state.wiki_cache.lock().unwrap();
+        let cache = state.wiki_cache.read().unwrap();
         if let Some(cached) = cache.get(&query_lower) {
             let duration = start_time.elapsed().unwrap_or_default();
             return HttpResponse::Ok().json(AskResponse {
@@ -193,7 +196,7 @@ async fn ask(web::Json(req): web::Json<AskRequest>, state: web::Data<AppState>) 
     });
     
     let response = state.client
-        .post(format!("{}/api/generate", state.config.ollama_url))
+        .post(&state.config.ollama_url_full)
         .json(&ollama_req)
         .timeout(state.config.ollama_timeout)
         .send()
@@ -215,26 +218,26 @@ async fn ask(web::Json(req): web::Json<AskRequest>, state: web::Data<AppState>) 
     
     // Store in cache
     {
-        let mut cache = state.answer_cache.lock().unwrap();
+        let mut cache = state.answer_cache.write().unwrap();
         cache.insert(query_lower.clone(), answer.clone());
     }
     
-    if let Some(ctx) = &wiki_context {
-        let mut cache = state.wiki_cache.lock().unwrap();
+    if let Some(ref ctx) = wiki_context {
+        let mut cache = state.wiki_cache.write().unwrap();
         cache.insert(query_lower, ctx.clone());
     }
     
     let duration = start_time.elapsed().unwrap_or_default();
     let source = if wiki_context.is_some() {
-        "wikipedia + local model"
+        "wikipedia + local model".to_string()
     } else {
-        "local model"
+        "local model".to_string()
     };
     
     HttpResponse::Ok().json(AskResponse {
         answer,
         model: state.config.model.clone(),
-        source: source.to_string(),
+        source,
         complexity: "simple".to_string(),
         processing_time_ms: duration.as_millis() as u64,
     })
@@ -250,7 +253,7 @@ async fn ask_stream(web::Json(req): web::Json<AskRequest>, state: web::Data<AppS
     });
 
     let response = match state.client
-        .post(format!("{}/api/generate", state.config.ollama_url))
+        .post(&state.config.ollama_url_full)
         .json(&ollama_req)
         .timeout(state.config.ollama_timeout)
         .send()
@@ -299,9 +302,9 @@ async fn health() -> impl Responder {
 }
 
 async fn stats(state: web::Data<AppState>) -> impl Responder {
-    let answer_count = state.answer_cache.lock().unwrap().len();
-    let wiki_count = state.wiki_cache.lock().unwrap().len();
-    let req_count = *state.request_count.lock().unwrap();
+    let answer_count = state.answer_cache.read().unwrap().len();
+    let wiki_count = state.wiki_cache.read().unwrap().len();
+    let req_count = *state.request_count.read().unwrap();
     
     HttpResponse::Ok().json(serde_json::json!({
         "total_requests": req_count,
@@ -322,9 +325,9 @@ async fn main() -> std::io::Result<()> {
             .pool_max_idle_per_host(16)
             .build()
             .unwrap_or_else(|_| Client::new()),
-        answer_cache: Mutex::new(HashMap::new()),
-        wiki_cache: Mutex::new(HashMap::new()),
-        request_count: Mutex::new(0),
+        answer_cache: RwLock::new(HashMap::new()),
+        wiki_cache: RwLock::new(HashMap::new()),
+        request_count: RwLock::new(0),
     });
     
     println!("V.E.C.T.O.R Rust starting on http://localhost:8080");

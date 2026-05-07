@@ -5,8 +5,8 @@ use serde_json::Value;
 use reqwest::Client;
 use std::time::{Duration, SystemTime};
 use std::process::Command;
-use std::collections::HashMap;
 use std::sync::Mutex;
+use std::collections::HashMap;
 use futures::StreamExt;
 
 // Request/Response structs
@@ -27,6 +27,7 @@ struct AskResponse {
 // App state
 struct AppState {
     config: Config,
+    client: Client,
     answer_cache: Mutex<HashMap<String, String>>,
     wiki_cache: Mutex<HashMap<String, String>>,
     request_count: Mutex<u64>,
@@ -179,7 +180,6 @@ async fn ask(web::Json(req): web::Json<AskRequest>, state: web::Data<AppState>) 
     };
     
     // Call Ollama
-    let client = Client::new();
     let ollama_req = serde_json::json!({
         "model": state.config.model,
         "prompt": prompt,
@@ -192,7 +192,7 @@ async fn ask(web::Json(req): web::Json<AskRequest>, state: web::Data<AppState>) 
         }
     });
     
-    let response = client
+    let response = state.client
         .post(format!("{}/api/generate", state.config.ollama_url))
         .json(&ollama_req)
         .timeout(state.config.ollama_timeout)
@@ -243,14 +243,13 @@ async fn ask(web::Json(req): web::Json<AskRequest>, state: web::Data<AppState>) 
 async fn ask_stream(web::Json(req): web::Json<AskRequest>, state: web::Data<AppState>) -> impl Responder {
     let prompt = format!("Question: {}\nAnswer:", req.question);
 
-    let client = Client::new();
     let ollama_req = serde_json::json!({
         "model": state.config.model,
         "prompt": prompt,
         "stream": true
     });
 
-    let response = match client
+    let response = match state.client
         .post(format!("{}/api/generate", state.config.ollama_url))
         .json(&ollama_req)
         .timeout(state.config.ollama_timeout)
@@ -319,6 +318,10 @@ async fn main() -> std::io::Result<()> {
     
     let state = web::Data::new(AppState {
         config: Config::default(),
+        client: Client::builder()
+            .pool_max_idle_per_host(16)
+            .build()
+            .unwrap_or_else(|_| Client::new()),
         answer_cache: Mutex::new(HashMap::new()),
         wiki_cache: Mutex::new(HashMap::new()),
         request_count: Mutex::new(0),

@@ -60,7 +60,7 @@ impl Default for Config {
 fn search_wikipedia(query: &str, zim_path: &str) -> Option<String> {
     // Step 1: Search for article
     let output = Command::new("zimsearch")
-        .args(&[zim_path, query])
+        .args([zim_path, query])
         .output()
         .ok()?;
     
@@ -86,7 +86,7 @@ fn search_wikipedia(query: &str, zim_path: &str) -> Option<String> {
     
     // Step 2: Dump article content
     let dump_output = Command::new("zimdump")
-        .args(&[zim_path, article_name])
+        .args([zim_path, article_name])
         .output()
         .ok()?;
     

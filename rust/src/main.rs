@@ -3,13 +3,10 @@ use actix_cors::Cors;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use reqwest::Client;
-use cached::proc_macro::cached;
-use regex::Regex;
 use std::time::{Duration, SystemTime};
-use std::process::{Command, Stdio};
-use std::io::{BufRead, BufReader};
-use std::fs;
-use std::path::Path;
+use std::process::Command;
+use std::collections::HashMap;
+use std::sync::Mutex;
 
 // Request/Response structs
 #[derive(Deserialize)]
@@ -23,16 +20,22 @@ struct AskResponse {
     model: String,
     source: String,
     complexity: String,
-    processing_time_ms: u128,
+    processing_time_ms: u64,
+}
+
+// App state
+struct AppState {
+    config: Config,
+    answer_cache: Mutex<HashMap<String, String>>,
+    wiki_cache: Mutex<HashMap<String, String>>,
 }
 
 // Configuration
 struct Config {
     ollama_url: String,
     ollama_timeout: Duration,
-    simple_model: String,
+    model: String,
     zim_path: String,
-    cache_ttl: Duration,
 }
 
 impl Default for Config {
@@ -40,20 +43,14 @@ impl Default for Config {
         Config {
             ollama_url: "http://localhost:11434".to_string(),
             ollama_timeout: Duration::from_secs(60),
-            simple_model: "gemma3:1b-it-qat".to_string(),
+            model: "gemma3:1b-it-qat".to_string(),
             zim_path: "/home/jahazielo/Downloads/wikipedia_en_simple_all_nopic_2026-02.zim".to_string(),
-            cache_ttl: Duration::from_secs(3600),
         }
     }
 }
 
-// Cached Wikipedia search
-#[cached(time = 3600)]
-fn search_wikipedia(query: String, zim_path: String) -> Option<String> {
-    search_zim(&query, &zim_path)
-}
-
-fn search_zim(query: &str, zim_path: &str) -> Option<String> {
+// Wikipedia search using zim tools
+fn search_wikipedia(query: &str, zim_path: &str) -> Option<String> {
     // Step 1: Search for article
     let output = Command::new("zimsearch")
         .args(&[zim_path, query])
@@ -76,7 +73,7 @@ fn search_zim(query: &str, zim_path: &str) -> Option<String> {
     }
     
     // Extract article name
-    let article_name = Path::new(article_path)
+    let article_name = std::path::Path::new(article_path)
         .file_name()?
         .to_str()?;
     
@@ -120,23 +117,46 @@ fn search_zim(query: &str, zim_path: &str) -> Option<String> {
     }
 }
 
-async fn ask(web::Json(req): web::Json<AskRequest>, config: web::Data<Config>) -> impl Responder {
+async fn ask(web::Json(req): web::Json<AskRequest>, state: web::Data<AppState>) -> impl Responder {
     let start_time = SystemTime::now();
+    let query_lower = req.question.to_lowercase();
     
-    // Check cache
-    if let Some(cached) = search_wikipedia(req.question.clone(), config.zim_path.clone()) {
-        let duration = start_time.elapsed().unwrap_or_default();
-        return HttpResponse::Ok().json(AskResponse {
-            answer: cached,
-            model: "cached".to_string(),
-            source: "wikipedia_cache".to_string(),
-            complexity: "simple".to_string(),
-            processing_time_ms: duration.as_millis(),
-        });
+    // Check answer cache first
+    {
+        let cache = state.answer_cache.lock().unwrap();
+        if let Some(cached) = cache.get(&query_lower) {
+            let duration = start_time.elapsed().unwrap_or_default();
+            return HttpResponse::Ok().json(AskResponse {
+                answer: cached.clone(),
+                model: "cached".to_string(),
+                source: "answer_cache".to_string(),
+                complexity: "simple".to_string(),
+                processing_time_ms: duration.as_millis() as u64,
+            });
+        }
     }
     
-    // Search Wikipedia
-    let wiki_context = search_zim(&req.question, &config.zim_path);
+    // Check Wikipedia cache
+    {
+        let cache = state.wiki_cache.lock().unwrap();
+        if let Some(cached) = cache.get(&query_lower) {
+            let duration = start_time.elapsed().unwrap_or_default();
+            return HttpResponse::Ok().json(AskResponse {
+                answer: cached.clone(),
+                model: "cached".to_string(),
+                source: "wikipedia_cache".to_string(),
+                complexity: "simple".to_string(),
+                processing_time_ms: duration.as_millis() as u64,
+            });
+        }
+    }
+    
+    // Search Wikipedia if query is long enough
+    let wiki_context = if req.question.len() > 15 {
+        search_wikipedia(&req.question, &state.config.zim_path)
+    } else {
+        None
+    };
     
     // Build prompt
     let prompt = if let Some(ref ctx) = wiki_context {
@@ -148,7 +168,7 @@ async fn ask(web::Json(req): web::Json<AskRequest>, config: web::Data<Config>) -
     // Call Ollama
     let client = Client::new();
     let ollama_req = serde_json::json!({
-        "model": config.simple_model,
+        "model": state.config.model,
         "prompt": prompt,
         "stream": false,
         "options": {
@@ -160,9 +180,9 @@ async fn ask(web::Json(req): web::Json<AskRequest>, config: web::Data<Config>) -
     });
     
     let response = client
-        .post(format!("{}/api/generate", config.ollama_url))
+        .post(format!("{}/api/generate", state.config.ollama_url))
         .json(&ollama_req)
-        .timeout(config.ollama_timeout)
+        .timeout(state.config.ollama_timeout)
         .send()
         .await;
     
@@ -180,6 +200,17 @@ async fn ask(web::Json(req): web::Json<AskRequest>, config: web::Data<Config>) -
         Err(_) => "Error: Failed to connect to Ollama".to_string(),
     };
     
+    // Store in cache
+    {
+        let mut cache = state.answer_cache.lock().unwrap();
+        cache.insert(query_lower.clone(), answer.clone());
+    }
+    
+    if let Some(ctx) = &wiki_context {
+        let mut cache = state.wiki_cache.lock().unwrap();
+        cache.insert(query_lower, ctx.clone());
+    }
+    
     let duration = start_time.elapsed().unwrap_or_default();
     let source = if wiki_context.is_some() {
         "wikipedia + local model"
@@ -189,10 +220,10 @@ async fn ask(web::Json(req): web::Json<AskRequest>, config: web::Data<Config>) -
     
     HttpResponse::Ok().json(AskResponse {
         answer,
-        model: config.simple_model.clone(),
+        model: state.config.model.clone(),
         source: source.to_string(),
         complexity: "simple".to_string(),
-        processing_time_ms: duration.as_millis(),
+        processing_time_ms: duration.as_millis() as u64,
     })
 }
 
@@ -207,7 +238,11 @@ async fn health() -> impl Responder {
 async fn main() -> std::io::Result<()> {
     env_logger::init();
     
-    let config = web::Data::new(Config::default());
+    let state = web::Data::new(AppState {
+        config: Config::default(),
+        answer_cache: Mutex::new(HashMap::new()),
+        wiki_cache: Mutex::new(HashMap::new()),
+    });
     
     println!("V.E.C.T.O.R Rust starting on http://localhost:8080");
     
@@ -218,7 +253,7 @@ async fn main() -> std::io::Result<()> {
             .allow_any_header();
         
         App::new()
-            .app_data(config.clone())
+            .app_data(state.clone())
             .wrap(cors)
             .route("/api/ask", web::post().to(ask))
             .route("/api/health", web::get().to(health))

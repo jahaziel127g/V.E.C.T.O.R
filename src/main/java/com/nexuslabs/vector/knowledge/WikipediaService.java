@@ -2,7 +2,6 @@ package com.nexuslabs.vector.knowledge;
 
 import com.nexuslabs.vector.config.AppConfig;
 import com.nexuslabs.vector.memory.WikiCache;
-import org.jsoup.Jsoup;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -110,8 +109,12 @@ public class WikipediaService {
 
     private Optional<String> extractArticleContent(String zimPath, String articlePath, String query) {
         try {
-            String[] parts = articlePath.split("/");
-            String articleName = parts[parts.length - 1];
+            // Extract article name from path
+            String articleName = articlePath;
+            if (articleName.contains("/")) {
+                String[] parts = articleName.split("/");
+                articleName = parts[parts.length - 1];
+            }
 
             ProcessBuilder dumpPb = new ProcessBuilder("zimdump", zimPath, articleName);
             dumpPb.redirectErrorStream(true);
@@ -122,12 +125,12 @@ public class WikipediaService {
                 String line;
                 boolean foundContent = false;
                 while ((line = reader.readLine()) != null) {
-                    if (line.startsWith("Content")) {
+                    if (line.startsWith("Content:")) {
                         foundContent = true;
                         continue;
                     }
-                    if (foundContent && line.length() > 20) {
-                        content.append(line).append("\n");
+                    if (foundContent && !line.trim().isEmpty()) {
+                        content.append(line).append(" ");
                     }
                 }
             }
@@ -142,7 +145,7 @@ public class WikipediaService {
                 return Optional.empty();
             }
 
-            String cleaned = Jsoup.parse(rawContent).text();
+            String cleaned = rawContent;
             int maxChars = config.getWikipedia().getMaxChars();
             if (cleaned.length() > maxChars) {
                 cleaned = cleaned.substring(0, maxChars);

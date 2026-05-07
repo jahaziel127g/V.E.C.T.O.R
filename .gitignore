@@ -13,3 +13,5 @@ models/
 dist/
 *.log
 *.jar
+rust/target/
+rust/Cargo.lock

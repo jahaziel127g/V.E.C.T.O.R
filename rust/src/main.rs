@@ -95,7 +95,7 @@ fn search_wikipedia(query: &str, zim_path: &str) -> Option<String> {
         .ok()?;
     
     let content = String::from_utf8_lossy(&dump_output.stdout);
-    let mut article_content = String::new();
+    let mut article_content = String::with_capacity(1600);
     let mut in_content = false;
     
     for line in content.lines() {
@@ -271,11 +271,12 @@ async fn ask_stream(web::Json(req): web::Json<AskRequest>, state: web::Data<AppS
         match chunk {
             Ok(bytes) => {
                 let line = String::from_utf8_lossy(&bytes);
-                let mut output = String::new();
+                let mut output = String::with_capacity(line.len() * 2);
                 for l in line.lines() {
                     if let Ok(json) = serde_json::from_str::<Value>(l) {
                         if let Some(token) = json.get("response").and_then(|v| v.as_str()) {
-                            output.push_str(&format!("data: {}\n\n", token));
+                            use std::fmt::Write;
+                            let _ = write!(output, "data: {}\n\n", token);
                         }
                         if json.get("done").and_then(|v| v.as_bool()).unwrap_or(false) {
                             output.push_str("data: [DONE]\n\n");
@@ -323,6 +324,7 @@ async fn main() -> std::io::Result<()> {
         config: Config::default(),
         client: Client::builder()
             .pool_max_idle_per_host(16)
+            .connect_timeout(Duration::from_secs(5))
             .build()
             .unwrap_or_else(|_| Client::new()),
         answer_cache: RwLock::new(HashMap::new()),

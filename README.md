@@ -14,6 +14,33 @@
 
 ---
 
+## 🚀 **WHICH VERSION TO USE?**
+
+### **For YOU (jahazielo - 3.6GB RAM Laptop):**
+🏆 **Use: RUST VERSION** (`rust/` folder)
+- **Why:** Uses only 50MB RAM vs Java's 500MB
+- **Startup:** Instant (<1s) vs Java's 5s
+- **Cached responses:** 0ms (instant!) vs Java's ~3s
+- **Wikipedia:** Works perfectly with ZIM file
+- **Build:** `cd rust && cargo build --release`
+- **Run:** `./target/release/vector_rust`
+
+### **For High-End Machines (16GB+ RAM):**
+- **Use: JAVA VERSION** (`main` branch)
+- Has desktop app (--app flag) with AWT GUI
+- More features: rate limiting, model routing, Kiwix server
+- **Run:** `java -jar target/vector-1.0.0.jar`
+
+### **For Developers:**
+| Version | Language | RAM Usage | Best For |
+|---------|----------|-----------|----------|
+| **Rust** ✅ | Rust (Actix-web) | ~50MB | **Low-end hardware, production** |
+| Java | Java (Spring Boot) | ~500MB | Desktop app, full features |
+| C | C (raw sockets) | ~5MB | Learning, minimal systems |
+| Python | Python (Flask) | ~80MB | Quick prototyping |
+
+---
+
 ## Overview 📖
 
 V.E.C.T.O.R is a backend system that acts as the central brain for AI-powered applications. It manages user requests, AI model routing, offline knowledge retrieval, memory optimization, and response generation.

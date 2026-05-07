@@ -14,6 +14,85 @@
 
 ---
 
+## 📦 **INSTALLATION GUIDE**
+
+### **For YU (jahazielo - 3.6GB RAM):**
+**Recommanded: RUST VERSION**
+
+1. **Install Rust:**
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+# Restart terminal or: source $HOME/.cargo/env
+```
+
+2. **Install Ollama:**
+```bash
+curl -fsSL https://ollama.com/install.sh | sh
+ollama serve &
+```
+
+3. **Pull AI Model:**
+```bash
+ollama pull gemma3:1b-it-qat
+```
+
+4. **Install zim-tools (for Wikipedia):**
+```bash
+sudo pacman -S zim-tools
+```
+
+5. **Build & Run Rust Version:**
+```bash
+cd /home/jahazielo/V.E.C.T.O.R/rust
+cargo build --release
+./target/release/vector_rust
+```
+
+6. **Test it:**
+```bash
+curl http://localhost:8080/api/health
+curl -X POST http://localhost:8080/api/ask -H "Content-Type: application/json" -d '{"question":"what is Python?"}'
+```
+
+---
+
+### **For High-End Machines (16GB+ RAM):**
+**Option: JAVA VERSION**
+
+1. **Install Java 17+ & Maven:**
+```bash
+sudo pacman -S jdk17 maven
+```
+
+2. **Start Ollama & Pull Models:**
+```bash
+ollama serve &
+ollama pull gemma3:1b-it-qat
+ollama pull phi4-mini:latest
+```
+
+3. **Build & Run:**
+```bash
+cd /home/jahazielo/V.E.C.T.O.R
+mvn clean package -DskipTests
+java -jar target/vector-1.0.0.jar
+```
+
+4. **Desktop App (optional):**
+```bash
+java -jar target/vector-1.0.0.jar --app
+```
+
+---
+
+### **Quick Install (Automated):**
+```bash
+cd /home/jahazielo/V.E.C.T.O.R
+bash install.sh
+```
+
+---
+
 ## 🚀 **WHICH VERSION TO USE?**
 
 ### **For YOU (jahazielo - 3.6GB RAM Laptop):**
@@ -221,6 +300,21 @@ mvn spring-boot:run
 # Build JAR
 mvn clean package
 ```
+
+---
+
+## 🖥️ **SYSTEM REQUIREMENTS**
+
+| Component | Requirement |
+|-----------|--------------|
+| **OS** | Linux (Arch, Ubuntu, Fedora, etc.) |
+| **RAM** | 3.6GB minimum (Rust version), 8GB+ (Java version) |
+| **Disk** | 3GB free (models + ZIM file) |
+| **Ollama** | v0.1.0+ (local AI runtime) |
+| **Rust** | 1.75+ (only for Rust version) |
+| **Java** | 17+ (only for Java version) |
+| **Maven** | 3.8+ (only for Java version) |
+| **zim-tools** | For Wikipedia integration (`sudo pacman -S zim-tools`) |
 
 ---
 

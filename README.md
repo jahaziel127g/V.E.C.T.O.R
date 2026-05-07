@@ -16,13 +16,77 @@
 
 ## 📦 **INSTALLATION GUIDE**
 
-### **For YU (jahazielo - 3.6GB RAM):**
-**Recommanded: RUST VERSION**
+### **Recommended: RUST VERSION** (Low RAM: 3.6GB+)
 
 1. **Install Rust:**
 ```bash
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 # Restart terminal or: source $HOME/.cargo/env
+```
+
+2. **Install Ollama:**
+```bash
+curl -fsSL https://ollama.com/install.sh | sh
+ollama serve &
+```
+
+3. **Pull AI Model:**
+```bash
+ollama pull gemma3:1b-it-qat
+```
+
+4. **Install zim-tools (for Wikipedia):**
+```bash
+sudo pacman -S zim-tools   # Arch
+# Ubuntu/Debian: sudo apt install zim-tools
+```
+
+5. **Build & Run Rust Version:**
+```bash
+cd rust
+cargo build --release
+./target/release/vector_rust
+```
+
+6. **Test it:**
+```bash
+curl http://localhost:8080/api/health
+curl -X POST http://localhost:8080/api/ask -H "Content-Type: application/json" -d '{"question":"what is Python?"}'
+```
+
+---
+
+### **Alternative: JAVA VERSION** (High-end: 8GB+ RAM)
+
+1. **Install Java 17+ & Maven:**
+```bash
+sudo pacman -S jdk17 maven   # Arch
+# Ubuntu/Debian: sudo apt install openjdk-17-jdk maven
+```
+
+2. **Start Ollama & Pull Models:**
+```bash
+ollama serve &
+ollama pull gemma3:1b-it-qat
+ollama pull phi4-mini:latest
+```
+
+3. **Build & Run:**
+```bash
+mvn clean package -DskipTests
+java -jar target/vector-1.0.0.jar
+```
+
+4. **Desktop App (optional):**
+```bash
+java -jar target/vector-1.0.0.jar --app
+```
+
+---
+
+### **Quick Install (Automated):**
+```bash
+bash install.sh
 ```
 
 2. **Install Ollama:**
@@ -314,7 +378,7 @@ mvn clean package
 | **Rust** | 1.75+ (only for Rust version) |
 | **Java** | 17+ (only for Java version) |
 | **Maven** | 3.8+ (only for Java version) |
-| **zim-tools** | For Wikipedia integration (`sudo pacman -S zim-tools`) |
+| **zim-tools** | For Wikipedia integration |
 
 ---
 

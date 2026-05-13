@@ -1,50 +1,14 @@
 (function() {
     'use strict';
 
-    // Simple markdown parser
-    function parseMarkdown(text) {
-        if (!text) return '';
-        let html = text
-            // Escape HTML first
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            // Headers
-            .replace(/^### (.*$)/gm, '<h3>$1</h3>')
-            .replace(/^## (.*$)/gm, '<h2>$1</h2>')
-            .replace(/^# (.*$)/gm, '<h1>$1</h1>')
-            // Bold
-            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-            .replace(/__(.*?)__/g, '<strong>$1</strong>')
-            // Italic
-            .replace(/\*(.*?)\*/g, '<em>$1</em>')
-            .replace(/_(.*?)_/g, '<em>$1</em>')
-            // Code blocks
-            .replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
-            // Inline code
-            .replace(/`(.*?)`/g, '<code>$1</code>')
-            // Lists
-            .replace(/^\* (.*$)/gm, '<li>$1</li>')
-            .replace(/^- (.*$)/gm, '<li>$1</li>')
-            .replace(/^\d+\. (.*$)/gm, '<li>$1</li>')
-            // Blockquotes
-            .replace(/^> (.*$)/gm, '<blockquote>$1</blockquote>')
-            // Links
-            .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>')
-            // Line breaks
-            .replace(/\n/g, '<br>');
-        
-        // Wrap consecutive <li> in <ul>
-        html = html.replace(/(<li>.*<\/li>)(<br>)?/g, '<ul>$1</ul>');
-        return html;
-    }
-
-    // Auto-detect API URL from current page
-const API_BASE = `${window.location.protocol}//${window.location.hostname}:8080/api`;
+    // Auto-detect API URL
+    const API_BASE = `${window.location.protocol}//${window.location.hostname}:8080/api`;
+    const STORAGE_KEY = 'vector_chat_history';
+    const MAX_STORAGE_MESSAGES = 100;
+    
     const TYPING_CLASS = 'typing';
     const MSG_USER = 'user';
     const MSG_ASSISTANT = 'assistant';
-    const MAX_INPUT_HEIGHT = 150;
 
     const el = {
         input: document.getElementById('question-input'),
@@ -54,10 +18,133 @@ const API_BASE = `${window.location.protocol}//${window.location.hostname}:8080/
         modelName: document.getElementById('model-name'),
         totalRequests: document.getElementById('total-requests'),
         cachedCount: document.getElementById('cached-count'),
-        status: document.getElementById('status')
+        status: document.getElementById('status'),
+        clearBtn: document.getElementById('clear-chat-btn')
     };
 
     let resizeTimeout;
+
+    // Simple markdown parser
+    function parseMarkdown(text) {
+        if (!text) return '';
+        let html = text
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/^### (.*$)/gm, '<h3>$1</h3>')
+            .replace(/^## (.*$)/gm, '<h2>$1</h2>')
+            .replace(/^# (.*$)/gm, '<h1>$1</h1>')
+            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+            .replace(/\*(.*?)\*/g, '<em>$1</em>')
+            .replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
+            .replace(/`(.*?)`/g, '<code>$1</code>')
+            .replace(/^\* (.*$)/gm, '<li>$1</li>')
+            .replace(/^- (.*$)/gm, '<li>$1</li>')
+            .replace(/^\d+\. (.*$)/gm, '<li>$1</li>')
+            .replace(/^> (.*$)/gm, '<blockquote>$1</blockquote>')
+            .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>')
+            .replace(/\n/g, '<br>');
+        return html.replace(/(<li>.*<\/li>)(<br>)?/g, '<ul>$1</ul>');
+    }
+
+    // Load chat history from localStorage
+    function loadChatHistory() {
+        try {
+            const data = localStorage.getItem(STORAGE_KEY);
+            if (data) {
+                const messages = JSON.parse(data);
+                // Clear welcome message
+                el.chat.innerHTML = '';
+                // Re-render messages
+                messages.forEach(msg => {
+                    renderMessage(msg.content, msg.isUser, msg.model, msg.time, false);
+                });
+            }
+        } catch (e) {
+            console.error('Failed to load chat history:', e);
+        }
+    }
+
+    // Save message to localStorage
+    function saveMessage(content, isUser, model, time) {
+        try {
+            let messages = [];
+            const data = localStorage.getItem(STORAGE_KEY);
+            if (data) {
+                messages = JSON.parse(data);
+            }
+            messages.push({ content, isUser, model, time });
+            // Keep only last MAX_STORAGE_MESSAGES
+            if (messages.length > MAX_STORAGE_MESSAGES) {
+                messages = messages.slice(-MAX_STORAGE_MESSAGES);
+            }
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
+        } catch (e) {
+            console.error('Failed to save message:', e);
+        }
+    }
+
+    // Clear chat history
+    function clearChatHistory() {
+        try {
+            localStorage.removeItem(STORAGE_KEY);
+            el.chat.innerHTML = `
+                <div class="welcome-message">
+                    <div class="welcome-icon">🤖</div>
+                    <h2>Hello! I'm V.E.C.T.O.R</h2>
+                    <p>Your AI assistant. Ask me anything!</p>
+                </div>
+            `;
+        } catch (e) {
+            console.error('Failed to clear chat:', e);
+        }
+    }
+
+    // Render a message
+    function renderMessage(content, isUser, model, time, save = true) {
+        // Remove welcome message if exists
+        const welcome = el.chat.querySelector('.welcome-message');
+        if (welcome) welcome.remove();
+
+        const div = document.createElement('div');
+        div.className = `message ${isUser ? MSG_USER : MSG_ASSISTANT}`;
+        
+        const icon = document.createElement('div');
+        icon.className = 'message-icon';
+        icon.textContent = isUser ? '👤' : '🤖';
+        
+        const bubble = document.createElement('div');
+        bubble.className = 'message-bubble';
+        
+        const contentDiv = document.createElement('div');
+        contentDiv.className = 'message-content';
+        if (isUser) {
+            contentDiv.textContent = content;
+        } else {
+            contentDiv.innerHTML = parseMarkdown(content);
+        }
+        bubble.appendChild(contentDiv);
+
+        if (model || time) {
+            const meta = document.createElement('div');
+            meta.className = 'message-meta';
+            const parts = [];
+            if (model) parts.push(model);
+            if (time) parts.push(`${time}ms`);
+            meta.textContent = parts.join(' • ');
+            bubble.appendChild(meta);
+        }
+        
+        div.appendChild(icon);
+        div.appendChild(bubble);
+        el.chat.appendChild(div);
+        
+        el.chat.scrollTop = el.chat.scrollHeight;
+        
+        if (save) {
+            saveMessage(content, isUser, model, time);
+        }
+    }
 
     async function updateStats() {
         try {
@@ -74,41 +161,21 @@ const API_BASE = `${window.location.protocol}//${window.location.hostname}:8080/
         try {
             const data = await (await fetch(`${API_BASE}/health`)).json();
             el.status.textContent = data.status === 'healthy' ? 'Online' : 'Error';
-            el.status.classList.remove('error');
+            el.status.classList.remove('error', 'offline');
         } catch (e) {
             el.status.textContent = 'Offline';
-            el.status.classList.add('error');
+            el.status.classList.add('error', 'offline');
         }
-    }
-
-    function addMessage(content, isUser, model, time) {
-        const div = document.createElement('div');
-        div.className = isUser ? `message ${MSG_USER}` : `message ${MSG_ASSISTANT}`;
-        
-        const contentDiv = document.createElement('div');
-        contentDiv.className = 'message-content';
-        
-        if (isUser) {
-            contentDiv.textContent = content;
-        } else {
-            contentDiv.innerHTML = parseMarkdown(content);
-        }
-        div.appendChild(contentDiv);
-
-        if (model || time) {
-            const meta = document.createElement('div');
-            meta.className = 'meta';
-            meta.textContent = [model, time ? `${time}ms` : null].filter(Boolean).join(' • ');
-            div.appendChild(meta);
-        }
-
-        el.chat.appendChild(div);
-        el.chat.scrollTop = el.chat.scrollHeight;
     }
 
     function setLoading(loading) {
         el.sendBtn.disabled = loading;
         el.input.disabled = loading;
+        if (loading) {
+            el.sendBtn.classList.add('loading');
+        } else {
+            el.sendBtn.classList.remove('loading');
+        }
     }
 
     async function sendQuestion() {
@@ -116,9 +183,9 @@ const API_BASE = `${window.location.protocol}//${window.location.hostname}:8080/
         if (!question) return;
 
         setLoading(true);
-        addMessage(question, true);
+        renderMessage(question, true);
         el.input.value = '';
-        el.input.style.height = '48px';
+        el.input.style.height = '24px';
 
         try {
             if (el.streamToggle.checked) {
@@ -127,7 +194,7 @@ const API_BASE = `${window.location.protocol}//${window.location.hostname}:8080/
                 await handleNormal(question);
             }
         } catch (e) {
-            addMessage(`Error: ${e.message}`, false);
+            renderMessage(`Error: ${e.message}`, false);
         }
 
         setLoading(false);
@@ -145,16 +212,31 @@ const API_BASE = `${window.location.protocol}//${window.location.hostname}:8080/
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
         const data = await res.json();
-        addMessage(data.answer, false, data.model, data.processing_time_ms);
+        renderMessage(data.answer, false, data.model, data.processing_time_ms);
     }
 
     async function handleStreaming(question) {
         const msgDiv = document.createElement('div');
-        msgDiv.className = `message ${MSG_ASSISTANT} ${TYPING_CLASS}`;
+        msgDiv.className = `message ${MSG_ASSISTANT}`;
+        
+        const icon = document.createElement('div');
+        icon.className = 'message-icon';
+        icon.textContent = '🤖';
+        
+        const bubble = document.createElement('div');
+        bubble.className = `message-bubble ${TYPING_CLASS}`;
+        
         const contentDiv = document.createElement('div');
         contentDiv.className = 'message-content';
-        msgDiv.appendChild(contentDiv);
+        
+        bubble.appendChild(contentDiv);
+        msgDiv.appendChild(icon);
+        msgDiv.appendChild(bubble);
         el.chat.appendChild(msgDiv);
+
+        // Remove welcome if exists
+        const welcome = el.chat.querySelector('.welcome-message');
+        if (welcome) welcome.remove();
 
         const res = await fetch(`${API_BASE}/ask/stream`, {
             method: 'POST',
@@ -163,13 +245,12 @@ const API_BASE = `${window.location.protocol}//${window.location.hostname}:8080/
         });
 
         if (!res.ok) {
-            msgDiv.classList.remove(TYPING_CLASS);
+            bubble.classList.remove(TYPING_CLASS);
             throw new Error(`HTTP ${res.status}`);
         }
 
         const start = Date.now();
         let answer = '';
-        let error = null;
 
         try {
             const reader = res.body.getReader();
@@ -186,24 +267,24 @@ const API_BASE = `${window.location.protocol}//${window.location.hostname}:8080/
                     if (line.startsWith('data: ')) {
                         const data = line.slice(6);
                         if (data === '[DONE]') {
-                            msgDiv.classList.remove(TYPING_CLASS);
+                            bubble.classList.remove(TYPING_CLASS);
                             const meta = document.createElement('div');
-                            meta.className = 'meta';
+                            meta.className = 'message-meta';
                             meta.textContent = `streaming • ${Date.now() - start}ms`;
-                            msgDiv.appendChild(meta);
+                            bubble.appendChild(meta);
+                            // Save to localStorage
+                            saveMessage(answer, false, 'gemma3:1b-it-qat', Date.now() - start);
                             return;
                         }
                         answer += data;
-                        try { contentDiv.innerHTML = parseMarkdown(answer); } 
-                        catch { contentDiv.textContent = answer; }
+                        contentDiv.innerHTML = parseMarkdown(answer);
                     }
                 }
                 el.chat.scrollTop = el.chat.scrollHeight;
             }
         } catch (e) {
-            error = e;
-            msgDiv.classList.remove(TYPING_CLASS);
-            addMessage('Stream error: ' + e.message, false);
+            bubble.classList.remove(TYPING_CLASS);
+            renderMessage('Stream error: ' + e.message, false);
         }
     }
 
@@ -211,10 +292,11 @@ const API_BASE = `${window.location.protocol}//${window.location.hostname}:8080/
         clearTimeout(resizeTimeout);
         resizeTimeout = setTimeout(() => {
             el.input.style.height = 'auto';
-            el.input.style.height = Math.min(el.input.scrollHeight, MAX_INPUT_HEIGHT) + 'px';
+            el.input.style.height = Math.min(el.input.scrollHeight, 150) + 'px';
         }, 100);
     }
 
+    // Event listeners
     el.sendBtn.addEventListener('click', sendQuestion);
     el.input.addEventListener('keydown', e => {
         if (e.key === 'Enter' && !e.shiftKey) {
@@ -223,7 +305,14 @@ const API_BASE = `${window.location.protocol}//${window.location.hostname}:8080/
         }
     });
     el.input.addEventListener('input', handleResize);
+    el.clearBtn.addEventListener('click', () => {
+        if (confirm('Clear all chat history?')) {
+            clearChatHistory();
+        }
+    });
 
+    // Initialize
+    loadChatHistory();
     checkHealth();
     updateStats();
     setInterval(checkHealth, 10000);

@@ -8,6 +8,8 @@ use std::process::Command;
 use parking_lot::RwLock;
 use std::collections::HashMap;
 use futures::StreamExt;
+use sysinfo::System;
+
 #[allow(unused_imports)]
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -29,6 +31,9 @@ const SOURCE_CACHE_WIKI: &str = "wikipedia_cache";
 const SOURCE_CACHED: &str = "cached";
 const ERROR_PARSE_RESPONSE: &str = "Error parsing response";
 const ERROR_CONNECT: &str = "Error: Failed to connect to Ollama";
+const MAX_CONVERSATION_HISTORY: usize = 3;
+const RAM_WARNING_THRESHOLD: u8 = 85;
+const RAM_CRITICAL_THRESHOLD: u8 = 90;
 
 #[allow(dead_code)]
 static SHUTDOWN_FLAG: AtomicBool = AtomicBool::new(false);
@@ -53,6 +58,7 @@ struct AppState {
     answer_cache: RwLock<HashMap<String, String>>,
     wiki_cache: RwLock<HashMap<String, String>>,
     request_count: RwLock<u64>,
+    conversation_history: RwLock<Vec<(String, String)>>,
 }
 
 #[derive(Clone)]
@@ -163,7 +169,39 @@ fn elapsed_ms(start: SystemTime) -> u64 {
     start.elapsed().unwrap_or_default().as_millis() as u64
 }
 
+fn get_ram_usage_percent() -> u8 {
+    let mut sys = System::new_all();
+    sys.refresh_memory();
+    ((sys.used_memory() as f64 / sys.total_memory() as f64) * 100.0) as u8
+}
+
+fn manage_memory_if_needed(state: &AppState) {
+    let ram = get_ram_usage_percent();
+    
+    if ram >= RAM_WARNING_THRESHOLD {
+        log::warn!("RAM usage high: {}%", ram);
+        
+        // Clear conversation history to free memory
+        if ram >= RAM_CRITICAL_THRESHOLD {
+            log::warn!("RAM critical: {}% - clearing history", ram);
+            let mut history = state.conversation_history.write();
+            history.clear();
+        }
+        
+        // Try to unload Ollama model if RAM is very high
+        if ram >= RAM_CRITICAL_THRESHOLD {
+            let _ = Command::new("ollama")
+                .arg("stop")
+                .output();
+            log::info!("Sent Ollama stop command to free memory");
+        }
+    }
+}
+
 async fn ask(web::Json(req): web::Json<AskRequest>, state: web::Data<AppState>) -> impl Responder {
+    // Check and manage RAM
+    manage_memory_if_needed(&state);
+    
     {
         let mut count = state.request_count.write();
         *count += 1;
@@ -207,26 +245,49 @@ async fn ask(web::Json(req): web::Json<AskRequest>, state: web::Data<AppState>) 
         None
     };
 
-    // Build prompt
-    let prompt = if let Some(ref ctx) = wiki_context {
-        format!("Context: {}\n\nQuestion: {}\nAnswer:", ctx, req.question)
-    } else {
-        format!("Question: {}\nAnswer:", req.question)
-    };
-
-    // Call Ollama
-    let ollama_req = state.config.ollama_request(&prompt, false);
+    // Build prompt - keep it simple for small context models
+    // Clone history BEFORE any await to avoid holding lock across await
+    let history: Vec<(String, String)> = state.conversation_history.read().clone();
+    let mut messages: Vec<Value> = Vec::new();
+    
+    // Add previous conversation as messages
+    for (q, a) in history.iter().take(MAX_CONVERSATION_HISTORY) {
+        messages.push(serde_json::json!({"role": "user", "content": q}));
+        messages.push(serde_json::json!({"role": "assistant", "content": a}));
+    }
+    
+    // Add Wikipedia context as system message if available
+    if let Some(ref ctx) = wiki_context {
+        messages.insert(0, serde_json::json!({
+            "role": "system", 
+            "content": format!("Context from Wikipedia: {}", ctx)
+        }));
+    }
+    
+    // Add current question
+    messages.push(serde_json::json!({"role": "user", "content": req.question}));
+    
+    // Use chat API
+    let ollama_req = serde_json::json!({
+        "model": state.config.model,
+        "messages": messages,
+        "stream": false
+    });
+    
+    // Call Ollama using chat endpoint
+    let chat_url = state.config.ollama_url_full.replace("/api/generate", "/api/chat");
     let response = state.client
-        .post(&state.config.ollama_url_full)
+        .post(&chat_url)
         .json(&ollama_req)
         .timeout(state.config.ollama_timeout)
         .send()
         .await;
-
+    
     let answer = match response {
         Ok(resp) => {
             if let Ok(json) = resp.json::<Value>().await {
-                json.get("response")
+                json.get("message")
+                    .and_then(|m| m.get("content"))
                     .and_then(Value::as_str)
                     .unwrap_or(ERROR_PARSE_RESPONSE)
                     .to_string()
@@ -237,8 +298,8 @@ async fn ask(web::Json(req): web::Json<AskRequest>, state: web::Data<AppState>) 
         Err(_) => ERROR_CONNECT.to_string(),
     };
 
-    // Cache answer
-    {
+    // Cache answer (only if not an error)
+    if !answer.starts_with("Error:") {
         let mut cache = state.answer_cache.write();
         cache.insert(query_lower.clone(), answer.clone());
     }
@@ -247,6 +308,16 @@ async fn ask(web::Json(req): web::Json<AskRequest>, state: web::Data<AppState>) 
     if let Some(ref ctx) = wiki_context {
         let mut cache = state.wiki_cache.write();
         cache.insert(query_lower, ctx.clone());
+    }
+    
+    // Store in conversation history
+    {
+        let mut history = state.conversation_history.write();
+        history.push((req.question.clone(), answer.clone()));
+        // Keep only last N messages
+        while history.len() > MAX_CONVERSATION_HISTORY {
+            history.remove(0);
+        }
     }
 
     let duration = elapsed_ms(start_time);
@@ -345,6 +416,7 @@ async fn main() -> std::io::Result<()> {
         answer_cache: RwLock::new(HashMap::new()),
         wiki_cache: RwLock::new(HashMap::new()),
         request_count: RwLock::new(0),
+        conversation_history: RwLock::new(Vec::new()),
     });
 
     println!("V.E.C.T.O.R Rust starting on http://0.0.0.0:8080");

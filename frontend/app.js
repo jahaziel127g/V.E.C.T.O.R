@@ -1,7 +1,46 @@
 (function() {
     'use strict';
 
-    const API_BASE = 'http://192.168.1.117:8080/api';
+    // Simple markdown parser
+    function parseMarkdown(text) {
+        if (!text) return '';
+        let html = text
+            // Escape HTML first
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            // Headers
+            .replace(/^### (.*$)/gm, '<h3>$1</h3>')
+            .replace(/^## (.*$)/gm, '<h2>$1</h2>')
+            .replace(/^# (.*$)/gm, '<h1>$1</h1>')
+            // Bold
+            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+            .replace(/__(.*?)__/g, '<strong>$1</strong>')
+            // Italic
+            .replace(/\*(.*?)\*/g, '<em>$1</em>')
+            .replace(/_(.*?)_/g, '<em>$1</em>')
+            // Code blocks
+            .replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
+            // Inline code
+            .replace(/`(.*?)`/g, '<code>$1</code>')
+            // Lists
+            .replace(/^\* (.*$)/gm, '<li>$1</li>')
+            .replace(/^- (.*$)/gm, '<li>$1</li>')
+            .replace(/^\d+\. (.*$)/gm, '<li>$1</li>')
+            // Blockquotes
+            .replace(/^> (.*$)/gm, '<blockquote>$1</blockquote>')
+            // Links
+            .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>')
+            // Line breaks
+            .replace(/\n/g, '<br>');
+        
+        // Wrap consecutive <li> in <ul>
+        html = html.replace(/(<li>.*<\/li>)(<br>)?/g, '<ul>$1</ul>');
+        return html;
+    }
+
+    // Auto-detect API URL from current page
+const API_BASE = `${window.location.protocol}//${window.location.hostname}:8080/api`;
     const TYPING_CLASS = 'typing';
     const MSG_USER = 'user';
     const MSG_ASSISTANT = 'assistant';
@@ -48,7 +87,12 @@
         
         const contentDiv = document.createElement('div');
         contentDiv.className = 'message-content';
-        contentDiv.textContent = content;
+        
+        if (isUser) {
+            contentDiv.textContent = content;
+        } else {
+            contentDiv.innerHTML = parseMarkdown(content);
+        }
         div.appendChild(contentDiv);
 
         if (model || time) {
@@ -150,7 +194,8 @@
                             return;
                         }
                         answer += data;
-                        contentDiv.textContent = answer;
+                        try { contentDiv.innerHTML = parseMarkdown(answer); } 
+                        catch { contentDiv.textContent = answer; }
                     }
                 }
                 el.chat.scrollTop = el.chat.scrollHeight;

@@ -54,13 +54,8 @@ ollama serve &
 OLLAMA_PID=$!
 sleep 5
 
-echo "  - Pulling simple model (1B)..."
-ollama pull hf.co/Andycurrent/Gemma-3-1B-it-GLM-4.7-Flash-Heretic-Uncensored-Thinking_GGUF:Q4_K_M 2>/dev/null || \
-ollama pull gemma:1b 2>/dev/null || echo "  Warning: Could not pull simple model"
-
-echo "  - Pulling complex model (2B)..."
-ollama pull hf.co/bartowski/gemma-2-2b-it-GGUF:Q4_K_M 2>/dev/null || \
-ollama pull gemma:2b 2>/dev/null || echo "  Warning: Could not pull complex model"
+echo "  - Pulling model..."
+ollama pull openbmb/minicpm5:latest 2>/dev/null || echo "  Warning: Could not pull model"
 
 kill $OLLAMA_PID 2>/dev/null || true
 

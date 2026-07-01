@@ -3,68 +3,111 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>V.E.C.T.O.R - AI Assistant</title>
-    <link rel="icon" href="favicon.ico">
+    <title>V.E.C.T.O.R — AI for Education</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%233b82f6'/><text x='16' y='22' font-size='18' font-weight='800' fill='white' text-anchor='middle'>V</text></svg>">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="app">
-        <header class="header">
-            <div class="logo">
-                <span class="logo-icon">⚡</span>
-                <h1>V.E.C.T.O.R</h1>
+    <div id="app">
+        <aside id="sidebar">
+            <div class="sidebar-header">
+                <svg class="sidebar-logo" width="32" height="32" viewBox="0 0 32 32" fill="none">
+                    <rect width="32" height="32" rx="8" fill="#3b82f6"/>
+                    <path d="M8 22V10l6 6-6 6z" fill="white" opacity="0.7"/>
+                    <path d="M18 22V10l6 6-6 6z" fill="white"/>
+                </svg>
+                <span class="sidebar-title">V.E.C.T.O.R</span>
             </div>
-            <div class="header-stats">
-                <div class="stat-item">
-                    <span class="stat-label">Model</span>
-                    <span class="stat-value" id="model-name">-</span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-label">Requests</span>
-                    <span class="stat-value" id="total-requests">0</span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-label">Cached</span>
-                    <span class="stat-value" id="cached-count">0</span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-label">Status</span>
-                    <span class="stat-value status" id="status">Connecting...</span>
-                </div>
-            </div>
-            <div class="header-actions">
-                <button id="clear-chat-btn" class="icon-btn" title="Clear Chat">🗑️</button>
-                <label class="toggle-label">
-                    <input type="checkbox" id="stream-toggle">
-                    <span class="toggle-text">Stream</span>
-                </label>
-            </div>
-        </header>
 
-        <div class="chat-container" id="chat-container">
-            <div class="welcome-message">
-                <div class="welcome-icon">🤖</div>
-                <h2>Hello! I'm V.E.C.T.O.R</h2>
-                <p>Your AI assistant. Ask me anything!</p>
-            </div>
-        </div>
-
-        <div class="input-area">
-            <div class="input-wrapper">
-                <textarea 
-                    id="question-input" 
-                    placeholder="Type your message..." 
-                    rows="1"
-                ></textarea>
-                <button id="send-btn" class="send-btn">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
-                    </svg>
+            <nav class="sidebar-nav">
+                <button class="nav-btn active" data-mode="quick">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                    Quick Answer
                 </button>
+                <button class="nav-btn" data-mode="study">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>
+                    Study Mode
+                </button>
+                <button class="nav-btn" data-mode="debug">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+                    Debug Mode
+                </button>
+            </nav>
+
+            <div class="sidebar-history">
+                <div class="sidebar-history-header">
+                    <button id="new-chat-btn" class="new-chat-btn" title="New conversation">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                        New Chat
+                    </button>
+                </div>
+                <div id="conversation-list"></div>
             </div>
+
+            <div class="sidebar-footer">
+                <div class="status-row">
+                    <span id="status-badge" class="status-dot offline"></span>
+                    <span class="status-label">Offline</span>
+                </div>
+                <div class="stats-row">
+                    <span id="stat-model" title="Model">—</span>
+                    <span id="stat-requests" title="Requests">0</span>
+                    <span id="stat-cache" title="Cached answers">0</span>
+                </div>
+            </div>
+        </aside>
+
+        <div id="main-area">
+            <header id="topbar">
+                <div class="topbar-info">
+                    <span id="mode-label">Quick Answer</span>
+                    <span class="topbar-hint">Ask anything, get an answer</span>
+                </div>
+                <div class="topbar-actions">
+                    <button id="stop-btn" title="Stop generating">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+                    </button>
+                    <button id="clear-chat-btn" class="topbar-btn" title="Clear conversation">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+                    </button>
+                </div>
+            </header>
+
+            <main id="chat">
+                <div id="welcome">
+                    <svg class="welcome-icon" width="48" height="48" viewBox="0 0 48 48" fill="none">
+                        <rect width="48" height="48" rx="14" fill="#3b82f6" fill-opacity="0.15"/>
+                        <path d="M16 32V16l8 8-8 8z" fill="#3b82f6" fill-opacity="0.5"/>
+                        <path d="M28 32V16l8 8-8 8z" fill="#3b82f6"/>
+                    </svg>
+                    <h2>What would you like to learn?</h2>
+                    <p>Ask me anything — I can explain concepts, help debug code, or dive deep into any topic.</p>
+                    <div class="welcome-suggestions">
+                        <button class="suggestion" data-q="What is the solar system?">What is the solar system?</button>
+                        <button class="suggestion" data-q="Explain how neural networks work">Explain how neural networks work</button>
+                        <button class="suggestion" data-q="Debug this: let x = 5; x = x + 'hello';">Debug this code</button>
+                        <button class="suggestion" data-q="What caused World War 2?">What caused World War 2?</button>
+                    </div>
+                </div>
+            </main>
+
+            <footer id="input-area">
+                <div class="input-wrapper">
+                    <textarea id="input" rows="1" placeholder="Ask anything…" autofocus></textarea>
+                    <button id="mic-btn" class="mic-btn" title="Speak your question">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 00-3 3v7a3 3 0 006 0V5a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+                    </button>
+                </div>
+                <button id="send-btn" disabled>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                </button>
+            </footer>
         </div>
     </div>
 
-    <script src="app.js"></script>
+    <script src="app.js?v=9"></script>
 </body>
 </html>

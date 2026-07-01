@@ -47,7 +47,7 @@ Response:
 ```json
 {
   "answer": "...",
-  "model": "gemma3:1b-it-qat",
+  "model": "openbmb/minicpm5:latest",
   "source": "wikipedia + local model",
   "complexity": "simple",
   "processing_time_ms": 123

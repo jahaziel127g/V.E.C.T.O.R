@@ -14,7 +14,7 @@
 
 #define PORT 8080
 #define OLLAMA_URL "http://localhost:11434"
-#define MODEL "gemma3:1b-it-qat"
+#define MODEL "openbmb/minicpm5:latest"
 #define BUF_SIZE 16384
 #define MAX_THREADS 4
 

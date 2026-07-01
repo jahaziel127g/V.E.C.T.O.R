@@ -122,7 +122,7 @@ start() {
 
     # Start Backend
     cd "$APP_DIR/rust"
-    nohup ./target/release/$APP_NAME > "$LOG_DIR/backend.log" 2>&1 &
+    nohup env RUST_LOG=info ./target/release/$APP_NAME > "$LOG_DIR/backend.log" 2>&1 &
     echo $! > "$BACKEND_PID"
 
     # Start Frontend
@@ -233,7 +233,7 @@ run_foreground() {
     # Start backend in foreground
     cd "$APP_DIR/rust"
     echo "Starting backend on http://0.0.0.0:8080 ..."
-    ./target/release/$APP_NAME &
+    RUST_LOG=info ./target/release/$APP_NAME &
     BACKEND_PID=$!
     echo "Backend started (PID: $BACKEND_PID)"
     

@@ -116,7 +116,7 @@ curl http://localhost:8080/api/models
 ```json
 {
   "answer": "AI is Artificial Intelligence...",
-  "model": "gemma-3-1b",
+  "model": "openbmb/minicpm5:latest",
   "source": "local model",
   "complexity": "simple",
   "processingTimeMs": 1200
@@ -186,7 +186,7 @@ ollama serve &
 
 ### 3. Download Model
 ```bash
-ollama pull gemma3:1b-it-qat
+ollama pull openbmb/minicpm5:latest
 ```
 
 ### 4. Install Wikipedia Tools
@@ -214,7 +214,7 @@ sudo pacman -S jdk17 maven
 ### 2. Start Ollama
 ```bash
 ollama serve &
-ollama pull gemma3:1b-it-qat
+ollama pull openbmb/minicpm5:latest
 ollama pull phi4-mini:latest
 ```
 

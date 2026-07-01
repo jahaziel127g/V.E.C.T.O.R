@@ -16,7 +16,7 @@ app = Flask(__name__)
 CORS(app)
 
 OLLAMA_URL = "http://localhost:11434"
-MODEL = "gemma3:1b-it-qat"
+MODEL = "openbmb/minicpm5:latest"
 ZIM_PATH = "/home/jahazielo/Downloads/wikipedia_en_simple_all_nopic_2026-02.zim"
 
 @lru_cache(maxsize=1000)
